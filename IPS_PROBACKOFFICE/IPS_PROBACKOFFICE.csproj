@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<NoWarn>$(NoWarn);SYSLIB0014</NoWarn>
+		<RootNamespace>IPS_PROBACKOFFICE</RootNamespace>
+		<AssemblyName>IPS_PROBACKOFFICE</AssemblyName>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="ClosedXML" Version="0.105.0" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
+		<PackageReference Include="MySqlConnector" Version="2.5.0" />
+		<PackageReference Include="NPOI" Version="2.7.4" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="2.1.11" />
+		<PackageReference Include="SSH.NET" Version="2025.1.0" />
+		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Update="Properties\Settings.Designer.cs">
+			<DesignTimeSharedInput>True</DesignTimeSharedInput>
+			<AutoGen>True</AutoGen>
+			<DependentUpon>Settings.settings</DependentUpon>
+		</Compile>
+
+		<None Update="Properties\Settings.settings">
+			<Generator>SettingsSingleFileGenerator</Generator>
+			<LastGenOutput>Settings.Designer.cs</LastGenOutput>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="appsettings.json" />
+
+		<Content Include="appsettings.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Remove="Templates\INVOICE_FX_SUMMARY_TEMPLATE.xls" />
+		<None Remove="Templates\NON SWITCH.xlsx.xls" />
+		<None Remove="Templates\SWITCH.xlsx.xls" />
+
+		<Content Include="Templates\INVOICE_FX_SUMMARY_TEMPLATE.xls">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<TargetPath>Templates\INVOICE_FX_SUMMARY_TEMPLATE.xls</TargetPath>
+		</Content>
+
+		<Content Include="Templates\NON SWITCH.xlsx.xls">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<TargetPath>Templates\NON SWITCH.xlsx.xls</TargetPath>
+		</Content>
+
+		<Content Include="Templates\SWITCH.xlsx.xls">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<TargetPath>Templates\SWITCH.xlsx.xls</TargetPath>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="excel_template\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
+		<None Update="reference_rates.csv">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
+		<None Update="App.config">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>

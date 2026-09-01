@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IPS_PROBACKOFFICE", "IPS_PROBACKOFFICE\IPS_PROBACKOFFICE.csproj", "{A1F46FF2-2687-4A2B-8AAE-03CA7B9A210D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IPS_PROBACKOFFICE.Harness", "IPS_PROBACKOFFICE.Harness\IPS_PROBACKOFFICE.Harness.csproj", "{A3EDDD14-9A5C-4B0E-A8F2-9CD626B6E2DD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1F46FF2-2687-4A2B-8AAE-03CA7B9A210D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1F46FF2-2687-4A2B-8AAE-03CA7B9A210D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1F46FF2-2687-4A2B-8AAE-03CA7B9A210D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1F46FF2-2687-4A2B-8AAE-03CA7B9A210D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3EDDD14-9A5C-4B0E-A8F2-9CD626B6E2DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3EDDD14-9A5C-4B0E-A8F2-9CD626B6E2DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3EDDD14-9A5C-4B0E-A8F2-9CD626B6E2DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3EDDD14-9A5C-4B0E-A8F2-9CD626B6E2DD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
