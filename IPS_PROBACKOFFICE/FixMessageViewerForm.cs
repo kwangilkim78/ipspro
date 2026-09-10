@@ -246,6 +246,12 @@ public sealed class FixMessageViewerForm : Form
 
         AddColumn(
             _messages,
+            nameof(MessageGridRow.Destination),
+            "구분",
+            100);
+
+        AddColumn(
+            _messages,
             "OrigOrderId",
             "Orig Order ID",
             250);
@@ -418,10 +424,17 @@ public sealed class FixMessageViewerForm : Form
             StpRouterMessage source)
         {
             Source = source;
+            Destination = FixMessageParser.Parse(source.Message)
+                .Any(field => field.Tag == "56" && string.Equals(
+                    field.Value, "traianaprod", StringComparison.OrdinalIgnoreCase))
+                ? "TRAIANA"
+                : "RTNS";
         }
 
         [Browsable(false)]
         public StpRouterMessage Source { get; }
+
+        public string Destination { get; }
 
         public string CreatedKst =>
             Source.Created

@@ -220,7 +220,7 @@ public sealed partial class FxValueDateForm : Form
             Func<DateTime, bool> koreanBusinessDay =
                 day => HolidayProvider.IsKoreanBusinessDay(day, overrides);
             DateTime tomorrowDate = AddBusinessDays(selectedDate, 1, jointBusinessDay);
-            DateTime spotDate = AddBusinessDays(selectedDate, 2, jointBusinessDay);
+            DateTime spotDate = CalculateSpotDate(selectedDate, koreanBusinessDay, jointBusinessDay);
             HashSet<string> selectedTenors = _tenorChecks
                 .Where(x => x.Value.Checked)
                 .Select(x => x.Key)
@@ -242,6 +242,17 @@ public sealed partial class FxValueDateForm : Form
         }
     }
 
+    internal static DateTime CalculateSpotDate(
+        DateTime tradeDate,
+        Func<DateTime, bool> koreanBusinessDay,
+        Func<DateTime, bool> jointBusinessDay)
+    {
+        // 중간 미국 휴일은 T+2 계산에서 제외하지 않는다.
+        // 한국 영업일로 이틀을 센 뒤 최종 결제일만 한·미 영업일로 조정한다.
+        DateTime target = AddBusinessDays(tradeDate, 2, koreanBusinessDay);
+        return RollFollowing(target, jointBusinessDay);
+    }
+
     private static DateTime AddBusinessDays(DateTime start, int days, Func<DateTime, bool> isBusinessDay)
     {
         int direction = Math.Sign(days);
@@ -255,7 +266,7 @@ public sealed partial class FxValueDateForm : Form
         return result;
     }
 
-    private static DataTable ToCalculatedRows(
+    internal static DataTable ToCalculatedRows(
         DateTime tradeDate,
         DateTime tomorrowDate,
         DateTime spotDate,

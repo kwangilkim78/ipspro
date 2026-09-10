@@ -27,6 +27,9 @@ namespace IPSEBO
         private readonly string connectionString;
         private string csvFileName = "reference_rates.csv";
         private const string NyCloseAgentInbox = "/opt/ips/nyclose-agent/inbox";
+        private const string FileTransferHost = "10.10.4.64";
+        private const string FileTransferUsername = "root";
+        private const string FileTransferPassword = "Wjswkrjfo12#";
         string localDirectory = @"Y:\전자거래사업본부\뉴욕종가";
         private bool changingKbMode;
         private DateTime? lastKbReportDate;
@@ -94,7 +97,7 @@ namespace IPSEBO
                 try
                 {
                     conn.Open();
-                    // PRODUCT 값에 따라 31, 32 치환 및 Reference No에 '00000' 접두사 추가
+                    // PRODUCT 값에 따라 31, 32 치환. Reference No는 뷰의 한국시간 날짜별 BOKId를 사용한다.
                     // NDF는 매수/매도 측 행의 trade_id가 서로 다를 수 있으므로
                     // 실제 체결 특성(시각/수량/가격/결제일/테너/레그)으로 한 거래를 식별한다.
                     string ndfGroupExpression = @"CONCAT_WS('|',
@@ -248,8 +251,10 @@ namespace IPSEBO
           `New/Delete/Update`,
           `Product Code`,
           `Reference No`,
-          `Buyer Code`,
-          `Seller Code`,
+          CASE WHEN `Buyer Code` IN ('1123-1', '1123-2')
+            THEN '1123' ELSE `Buyer Code` END AS `Buyer Code`,
+          CASE WHEN `Seller Code` IN ('1123-1', '1123-2')
+            THEN '1123' ELSE `Seller Code` END AS `Seller Code`,
           `Amount`,
           `Basic Currency`,
           `Counter Currency`,
@@ -563,6 +568,45 @@ namespace IPSEBO
             catch { }
         }
 
+        private async void btnSftpTest_Click(object sender, EventArgs e)
+        {
+            var testButton = sender as Button;
+            if (testButton is not null)
+                testButton.Enabled = false;
+
+            try
+            {
+                string folderPath = GetTransferFolderPath();
+                await Task.Run(() =>
+                {
+                    using var client = new SftpClient(FileTransferHost, FileTransferUsername, FileTransferPassword);
+                    client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(5);
+                    client.Connect();
+                    _ = client.GetAttributes(folderPath);
+                    client.Disconnect();
+                });
+
+                MessageBox.Show(
+                    $"SFTP 접속 성공\n{FileTransferHost}:22\n{folderPath}",
+                    "SFTP 접속 테스트",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"SFTP 접속 실패\n{ex.Message}",
+                    "SFTP 접속 테스트",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                if (testButton is not null)
+                    testButton.Enabled = true;
+            }
+        }
+
         private void btnFtpSend_Click(object sender, EventArgs e)
         {
             try
@@ -575,26 +619,12 @@ namespace IPSEBO
                     return;
                 }
 
-                string host = Environment.GetEnvironmentVariable("IPSPROBO_SFTP_HOST") ?? "10.10.4.64";
-                string username = Environment.GetEnvironmentVariable("IPSPROBO_SFTP_USER") ?? "root";
-                string? password = Environment.GetEnvironmentVariable("IPSPROBO_SFTP_PASSWORD");
-                if (string.IsNullOrWhiteSpace(password))
-                {
-                    MessageBox.Show(
-                        "SFTP 비밀번호 환경변수 IPSPROBO_SFTP_PASSWORD가 설정되지 않았습니다.",
-                        "SFTP 설정 오류",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    return;
-                }
-
-                string folderPath = textBox7.Text.Trim();
-                if (string.IsNullOrEmpty(folderPath)) folderPath = "/home/edgeWater/Templates";
+                string folderPath = GetTransferFolderPath();
 
                 string remotePath = CombineRemotePath(folderPath, csvFileName);
                 string agentPath = CombineRemotePath(NyCloseAgentInbox, csvFileName);
 
-                using (var client = new SftpClient(host, username, password))
+                using (var client = new SftpClient(FileTransferHost, FileTransferUsername, FileTransferPassword))
                 {
                     client.Connect();
                     using (var fs = new FileStream(localPath, FileMode.Open))
@@ -634,6 +664,12 @@ namespace IPSEBO
         {
             string normalized = directory.Trim().TrimEnd('/');
             return normalized + "/" + fileName;
+        }
+
+        private string GetTransferFolderPath()
+        {
+            string folderPath = textBox7.Text.Trim();
+            return string.IsNullOrEmpty(folderPath) ? "/home/edgeWater/Templates" : folderPath;
         }
 
         private void btnKbExcel_Click(object sender, EventArgs e)
@@ -819,13 +855,17 @@ namespace IPSEBO
                 nyCloseHistoryGrid.DataSource = table;
                 nyCloseHistoryStatus.Text = $"{selectedKstDate:yyyy-MM-dd} · {table.Rows.Count:N0}건";
 
-                if (nyCloseHistoryGrid.Columns["입력일시"] is DataGridViewColumn modifiedColumn)
+                if (nyCloseHistoryGrid.Columns["시간"] is DataGridViewColumn modifiedColumn)
+                {
                     modifiedColumn.DefaultCellStyle.Format = "yyyy-MM-dd HH:mm:ss.fff";
-                foreach (string columnName in new[] { "가격", "SWAP POINTS", "수량" })
+                    modifiedColumn.FillWeight = 50;
+                }
+                foreach (string columnName in new[] { "환율", "SWAP POINTS" })
                     if (nyCloseHistoryGrid.Columns[columnName] is DataGridViewColumn column)
                     {
                         column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
                         column.DefaultCellStyle.Format = "N3";
+                        column.FillWeight = 25;
                     }
             }
             catch (Exception ex)

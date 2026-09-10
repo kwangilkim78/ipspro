@@ -99,7 +99,7 @@ internal static class FeeRevenueWorkbookExporter
             for (int column = 0; column < columnCount; column++)
             {
                 object value = table.Rows[row][column];
-                sheet.Cell(firstDataRow + row, column + 1).Value = column < 2
+                sheet.Cell(firstDataRow + row, column + 1).Value = column < 3
                     ? Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
                     : Convert.ToDecimal(value, CultureInfo.InvariantCulture);
             }
@@ -129,15 +129,16 @@ internal static class FeeRevenueWorkbookExporter
         sheet.Row(headerRow).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         sheet.Range(2, 2, 2, 4).Style.DateFormat.Format = "yyyy-mm-dd";
         sheet.Cell(2, 7).Style.NumberFormat.Format = "#,##0.00";
-        if (table.Rows.Count > 0 && columnCount >= 3)
-            sheet.Range(firstDataRow, 3, lastDataRow, columnCount).Style.NumberFormat.Format = "#,##0;[Red]-#,##0;-";
+        if (table.Rows.Count > 0 && columnCount >= 4)
+            sheet.Range(firstDataRow, 4, lastDataRow, columnCount).Style.NumberFormat.Format = "#,##0.####;[Red]-#,##0.####;-";
 
         sheet.Column(1).Width = 24;
         sheet.Column(2).Width = 22;
-        if (columnCount >= 3)
-            sheet.Columns(3, columnCount).Width = 14;
+        sheet.Column(3).Width = 12;
+        if (columnCount >= 4)
+            sheet.Columns(4, columnCount).Width = 14;
         sheet.SheetView.FreezeRows(headerRow);
-        sheet.SheetView.FreezeColumns(2);
+        sheet.SheetView.FreezeColumns(3);
         sheet.Range(headerRow, 1, Math.Max(lastDataRow, headerRow), columnCount).SetAutoFilter();
     }
 }

@@ -53,6 +53,7 @@
             var btnKbEod = new Button();
             var btnKbExcel = new Button();
             var btnKbEmail = new Button();
+            var btnSftpTest = new Button();
             var btnFtpSend = new Button();
             var button1 = new Button();
             dateTimePicker1 = new DateTimePicker();
@@ -184,6 +185,10 @@
             ratePanel.Controls.Add(new Label { Text = "FTP 경로", AutoSize = true, Margin = new Padding(12, 8, 3, 0) });
             textBox7.Width = 220;
             ratePanel.Controls.Add(textBox7);
+            btnSftpTest.Text = "SFTP 접속 테스트";
+            btnSftpTest.AutoSize = true;
+            btnSftpTest.Click += btnSftpTest_Click;
+            ratePanel.Controls.Add(btnSftpTest);
             btnFtpSend.Text = "FTP 전송";
             btnFtpSend.AutoSize = true;
             btnFtpSend.Click += btnFtpSend_Click;
@@ -199,7 +204,7 @@
 
             historyToolbar.Dock = DockStyle.Fill;
             historyToolbar.AutoSize = true;
-            historyToolbar.Padding = new Padding(14, 6, 14, 6);
+            historyToolbar.Padding = new Padding(14, 16, 14, 8);
             historyToolbar.Controls.Add(new Label
             {
                 Text = "뉴욕종가 입력내역",
@@ -221,15 +226,16 @@
             historyToolbar.Controls.Add(nyCloseHistoryStatus);
 
             nyCloseHistoryGrid.Dock = DockStyle.Left;
-            nyCloseHistoryGrid.Width = 430;
-            nyCloseHistoryGrid.MinimumSize = new Size(430, 0);
+            nyCloseHistoryGrid.Width = 640;
+            nyCloseHistoryGrid.MinimumSize = new Size(640, 0);
+            nyCloseHistoryGrid.Margin = new Padding(17, 3, 3, 3);
             nyCloseHistoryGrid.ReadOnly = true;
             nyCloseHistoryGrid.AllowUserToAddRows = false;
             nyCloseHistoryGrid.AllowUserToDeleteRows = false;
             nyCloseHistoryGrid.AllowUserToOrderColumns = true;
             nyCloseHistoryGrid.RowHeadersVisible = false;
             nyCloseHistoryGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            nyCloseHistoryGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+            nyCloseHistoryGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             nyCloseHistoryGrid.BackgroundColor = Color.White;
 
             rateLayout.Controls.Add(ratePanel, 0, 0);

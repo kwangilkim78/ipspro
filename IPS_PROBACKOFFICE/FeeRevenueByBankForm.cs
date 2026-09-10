@@ -140,9 +140,11 @@ public sealed class FeeRevenueByBankForm : Form
 
         AddTextColumn("Bank", "Bank", 180, DataGridViewContentAlignment.MiddleLeft, frozen: true);
         AddTextColumn("Dealer Name", "Dealer Name", 160, DataGridViewContentAlignment.MiddleLeft, frozen: true);
+        AddTextColumn("Currency", "Currency", 80, DataGridViewContentAlignment.MiddleCenter, frozen: false);
         foreach ((string header, _) in Products)
             AddNumberColumn(header, header, 100);
-        AddNumberColumn("Total", "Total", 115);
+        AddNumberColumn("Total USD", "Total USD", 115);
+        AddNumberColumn("Total KRW", "Total KRW", 125);
     }
 
     private void AddTextColumn(
@@ -246,7 +248,7 @@ public sealed class FeeRevenueByBankForm : Form
             _currentCurrencies = currencies;
             BuildTable(_currentTrades, _currentCurrencies, _exchangeRate.Value);
             _excel.Enabled = true;
-            finalStatus = $"조회 완료 · {selectedFrom:yyyy-MM-dd}~{selectedTo:yyyy-MM-dd} · {trades.Count:N0}건 · KRW 환산";
+            finalStatus = $"조회 완료 · {selectedFrom:yyyy-MM-dd}~{selectedTo:yyyy-MM-dd} · {trades.Count:N0}건 · 통화별 합계";
         }
         catch (Exception ex)
         {
@@ -267,30 +269,54 @@ public sealed class FeeRevenueByBankForm : Form
     {
         DataTable table = CreateTable();
         _rowKinds.Clear();
-        decimal[] grand = new decimal[Products.Length];
+        var grandByCurrency = new Dictionary<string, decimal[]>(StringComparer.OrdinalIgnoreCase);
 
         foreach (IGrouping<string, TradeRow> bank in trades
                      .GroupBy(x => x.InstitutionName, StringComparer.OrdinalIgnoreCase)
                      .OrderBy(x => x.Key))
         {
+            string currency = CurrencyOf(bank.First(), currencies);
             decimal[] bankTotal = new decimal[Products.Length];
             foreach (IGrouping<string, TradeRow> dealer in bank
                          .GroupBy(x => string.IsNullOrWhiteSpace(x.Dealer) ? "(Unknown)" : x.Dealer,
                              StringComparer.OrdinalIgnoreCase)
                          .OrderBy(x => x.Key))
             {
-                decimal[] values = SumProducts(dealer, currencies, exchangeRate);
-                AddRow(table, bank.Key, dealer.Key, values);
+                decimal[] values = SumProducts(dealer);
+                AddRow(table, bank.Key, dealer.Key, currency, values);
                 _rowKinds.Add(FeeRevenueRowKind.Detail);
                 Add(values, bankTotal);
             }
 
-            AddRow(table, bank.Key, "Total", bankTotal);
+            AddRow(table, bank.Key, "Total", currency, bankTotal);
             _rowKinds.Add(FeeRevenueRowKind.BankTotal);
+            if (!grandByCurrency.TryGetValue(currency, out decimal[]? grand))
+            {
+                grand = new decimal[Products.Length];
+                grandByCurrency[currency] = grand;
+            }
             Add(bankTotal, grand);
         }
 
-        AddRow(table, "Grand Total", "Total", grand);
+        foreach (string currency in new[] { "USD", "KRW" })
+        {
+            grandByCurrency.TryGetValue(currency, out decimal[]? grand);
+            AddRow(table, $"{currency} Total", "Total", currency,
+                grand ?? new decimal[Products.Length]);
+            _rowKinds.Add(FeeRevenueRowKind.GrandTotal);
+        }
+
+        grandByCurrency.TryGetValue("USD", out decimal[]? usdGrand);
+        grandByCurrency.TryGetValue("KRW", out decimal[]? krwGrand);
+        var convertedGrand = new decimal[Products.Length];
+        for (int i = 0; i < convertedGrand.Length; i++)
+        {
+            convertedGrand[i] = decimal.Round(
+                (usdGrand?[i] ?? 0m) * exchangeRate + (krwGrand?[i] ?? 0m),
+                0,
+                MidpointRounding.AwayFromZero);
+        }
+        AddRow(table, "Grand Total", "Total", "KRW+USD", convertedGrand);
         _rowKinds.Add(FeeRevenueRowKind.GrandTotal);
         _currentTable = table;
         _grid.DataSource = table;
@@ -303,16 +329,15 @@ public sealed class FeeRevenueByBankForm : Form
         var table = new DataTable();
         table.Columns.Add("Bank", typeof(string));
         table.Columns.Add("Dealer Name", typeof(string));
+        table.Columns.Add("Currency", typeof(string));
         foreach ((string header, _) in Products)
             table.Columns.Add(header, typeof(decimal));
-        table.Columns.Add("Total", typeof(decimal));
+        table.Columns.Add("Total USD", typeof(decimal));
+        table.Columns.Add("Total KRW", typeof(decimal));
         return table;
     }
 
-    private static decimal[] SumProducts(
-        IEnumerable<TradeRow> trades,
-        IReadOnlyDictionary<string, string> currencies,
-        decimal exchangeRate)
+    private static decimal[] SumProducts(IEnumerable<TradeRow> trades)
     {
         decimal[] values = new decimal[Products.Length];
         foreach (TradeRow trade in trades)
@@ -321,13 +346,18 @@ public sealed class FeeRevenueByBankForm : Form
             if (index < 0)
                 continue;
 
-            bool usd = currencies.TryGetValue(trade.InstitutionCode, out string? currency)
-                && currency.Equals("USD", StringComparison.OrdinalIgnoreCase);
-            decimal fee = usd ? trade.BrokerageAmount * exchangeRate : trade.BrokerageAmount;
-            values[index] += decimal.Round(fee, 0, MidpointRounding.AwayFromZero);
+            values[index] += trade.BrokerageAmount;
         }
         return values;
     }
+
+    private static string CurrencyOf(
+        TradeRow trade,
+        IReadOnlyDictionary<string, string> currencies) =>
+        currencies.TryGetValue(trade.InstitutionCode, out string? currency)
+            && !string.IsNullOrWhiteSpace(currency)
+                ? currency.Trim().ToUpperInvariant()
+                : "KRW";
 
     private static int ProductIndex(string product)
     {
@@ -350,18 +380,26 @@ public sealed class FeeRevenueByBankForm : Form
             target[i] += source[i];
     }
 
-    private static void AddRow(DataTable table, string bank, string dealer, decimal[] values)
+    private static void AddRow(
+        DataTable table,
+        string bank,
+        string dealer,
+        string currency,
+        decimal[] values)
     {
-        object[] cells = new object[Products.Length + 3];
+        object[] cells = new object[Products.Length + 5];
         cells[0] = bank;
         cells[1] = dealer;
+        cells[2] = currency;
         decimal total = 0m;
         for (int i = 0; i < values.Length; i++)
         {
-            cells[i + 2] = values[i];
+            cells[i + 3] = values[i];
             total += values[i];
         }
-        cells[^1] = total;
+        bool usd = currency.Equals("USD", StringComparison.OrdinalIgnoreCase);
+        cells[^2] = usd ? total : 0m;
+        cells[^1] = usd ? 0m : total;
         table.Rows.Add(cells);
     }
 

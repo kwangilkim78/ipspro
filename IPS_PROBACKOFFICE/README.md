@@ -36,6 +36,6 @@
 
 Visual Studio 2022 이상에서 `IPS_PROBACKOFFICE.sln`을 열어 빌드합니다. 다른 PC에 배포할 때는 게시(Publish) 결과 폴더 전체를 복사해야 하며, `appsettings.json`, `Templates`, `excel_template`, `reference_rates.csv`가 함께 있어야 합니다.
 
-SFTP 전송 기능을 사용하려면 실행 계정에 `IPSPROBO_SFTP_PASSWORD` 환경변수를 설정해야 합니다. 필요하면 `IPSPROBO_SFTP_HOST`, `IPSPROBO_SFTP_USER`도 설정할 수 있습니다.
+SFTP 접속 정보는 프로그램 소스에 설정되어 있으므로 별도 환경변수 설정 없이 전송할 수 있습니다.
 
 환율 저장 경로 `Y:\전자거래사업본부\뉴욕종가`와 DB/SFTP 접속 환경은 대상 PC에서도 접근 가능해야 합니다.

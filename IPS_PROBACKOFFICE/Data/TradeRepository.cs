@@ -59,7 +59,8 @@ public sealed class TradeRepository
     }
 
     public async Task<IReadOnlyList<Institution>> GetInstitutionsAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool includeInactive = false)
     {
         const string sql = """
             SELECT
@@ -68,11 +69,12 @@ public sealed class TradeRepository
                 o.emails,
                 o.rtns_org_code,
                 o.id AS external_institution_id,
-                COALESCE(o.slug, '') AS slug
+                COALESCE(o.slug, '') AS slug,
+                COALESCE(o.enabled, 0) AS enabled
             FROM mextrader_admin_prod.organizations o
             LEFT JOIN ips_ew.institution_local_info l
               ON l.external_institution_id = o.id
-            WHERE COALESCE(o.enabled, 0) = 1
+            WHERE (@includeInactive = 1 OR COALESCE(o.enabled, 0) = 1)
             AND NULLIF(TRIM(l.institution_code), '') IS NOT NULL
             ORDER BY o.name, o.id;
             """;
@@ -83,6 +85,7 @@ public sealed class TradeRepository
         await connection.OpenAsync(cancellationToken);
 
         await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@includeInactive", includeInactive);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
 
@@ -96,7 +99,7 @@ public sealed class TradeRepository
                     RtnsOrgCode: GetNullableString(reader, "rtns_org_code"),
                     ExternalInstitutionId: reader.GetInt64("external_institution_id"),
                     Slug: GetString(reader, "slug"),
-                    Enabled: true));
+                    Enabled: reader.GetBoolean("enabled")));
         }
 
         return result;

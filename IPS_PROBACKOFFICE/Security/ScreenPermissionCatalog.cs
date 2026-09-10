@@ -10,6 +10,8 @@ public static class ScreenPermissionCatalog
     public const string BrokerageFee = "BROKERAGE_FEE";
     public const string ExecutiveReport = "EXECUTIVE_REPORT";
     public const string FeeRevenue = "FEE_REVENUE";
+    public const string DailyFeeTotal = "DAILY_FEE_TOTAL";
+    public const string MonthlyFeeStatement = "MONTHLY_FEE_STATEMENT";
     public const string Invoice = "INVOICE";
     public const string FixMessage = "FIX_MESSAGE";
     public const string TradeImport = "TRADE_IMPORT";
@@ -21,9 +23,11 @@ public static class ScreenPermissionCatalog
         new(Operations, "BOK · KB EOD · 뉴욕종가"),
         new(MasterData, "기관 · 딜러 관리"),
         new(CreditMatrix, "전체 기관 한도 매트릭스"),
-        new(BrokerageFee, "기관별 중개 수수료"),
+        new(BrokerageFee, "중개 수수료 관리"),
         new(ExecutiveReport, "대표이사 보고"),
         new(FeeRevenue, "매출 수수료 조회"),
+        new(DailyFeeTotal, "월/일별 수수료"),
+        new(MonthlyFeeStatement, "수수료 계산서 내역"),
         new(Invoice, "Invoice"),
         new(FixMessage, "FIX 전문 조회"),
         new(TradeImport, "거래 CSV 업로드"),

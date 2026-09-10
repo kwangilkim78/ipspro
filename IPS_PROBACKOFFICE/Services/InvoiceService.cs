@@ -13,6 +13,8 @@ public sealed class InvoiceService
     private const int SwapTemplateLastRow = 25; // Excel 26행
     private const int SwapTemplateCapacity =
         SwapTemplateLastRow - SwapDataStartRow + 1;
+    private const int FrontPageRowCount = 28;
+    private const int HalfRowAnchorOffset = 128;
 
     private readonly InvoiceSettings _settings;
     private readonly TemplateService _templateService;
@@ -28,13 +30,15 @@ public sealed class InvoiceService
     public string CreateInvoice(
         Institution institution,
         DateTime month,
-        IReadOnlyList<TradeRow> rows)
+        IReadOnlyList<TradeRow> rows,
+        string feeCurrency = "KRW",
+        string? outputDirectory = null)
     {
         if (rows.Count == 0)
             throw new InvalidOperationException("조회된 거래가 없습니다.");
 
         string templatePath = _templateService.ResolveTemplatePath(institution);
-        string outputFolder = Path.Combine(
+        string outputFolder = outputDirectory ?? Path.Combine(
             AppContext.BaseDirectory,
             _settings.OutputFolder);
         Directory.CreateDirectory(outputFolder);
@@ -69,9 +73,13 @@ public sealed class InvoiceService
         ISheet summaryDealer = FindSheet(workbook, "summary_d")
             ?? throw MissingSheet("summary_d");
 
-        List<TradeRow> orderedRows = rows
-            .OrderBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.Product, StringComparer.OrdinalIgnoreCase)
+        bool dealerFirst = UsesDealerFirstOrdering(institution.Name);
+        IOrderedEnumerable<TradeRow> primaryOrdering = dealerFirst
+            ? rows.OrderBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => NormalizeDisplayProduct(x.Product), StringComparer.OrdinalIgnoreCase)
+            : rows.OrderBy(x => NormalizeDisplayProduct(x.Product), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase);
+        List<TradeRow> orderedRows = primaryOrdering
             .ThenBy(x => x.TradeDate ?? DateTime.MinValue)
             .ThenBy(x => x.RefNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -92,19 +100,35 @@ public sealed class InvoiceService
 
         int swapTemplateIndex = workbook.GetSheetIndex(swap.SheetName);
         var detailSections = new List<(ISheet Sheet, int LastRow)>();
+        int detailPageNumber = 0;
 
-        for (int index = 0; index < detailGroups.Count; index++)
+        foreach (List<TradeRow> detailGroup in detailGroups)
         {
-            // 원본 swap 시트는 템플릿으로 남겨두고,
-            // 딜러별로 복제한 시트에 거래를 작성한다.
-            ISheet detailSheet = workbook.CloneSheet(swapTemplateIndex);
-            int detailLastRow = WriteSwap(
-                detailSheet,
-                institution,
-                detailGroups[index],
-                index + 1);
+            int pageCount = (detailGroup.Count + SwapTemplateCapacity - 1)
+                / SwapTemplateCapacity;
 
-            detailSections.Add((detailSheet, detailLastRow));
+            for (int pageIndex = 0; pageIndex < pageCount; pageIndex++)
+            {
+                List<TradeRow> pageRows = detailGroup
+                    .Skip(pageIndex * SwapTemplateCapacity)
+                    .Take(SwapTemplateCapacity)
+                    .ToList();
+                bool includeTotal = pageIndex == pageCount - 1;
+
+                // 상세 페이지마다 원본 템플릿을 복제해 로고·제목·컬럼 헤더를 반복한다.
+                ISheet detailSheet = workbook.CloneSheet(swapTemplateIndex);
+                int detailLastRow = WriteSwap(
+                    detailSheet,
+                    institution,
+                    invoiceTitle,
+                    pageRows,
+                    ++detailPageNumber,
+                    includeTotal,
+                    detailGroup,
+                    feeCurrency);
+
+                detailSections.Add((detailSheet, detailLastRow));
+            }
         }
 
         int dealerSummaryLastRow = WriteDealerSummary(
@@ -112,7 +136,9 @@ public sealed class InvoiceService
             institution,
             summaryTitle,
             orderedRows,
-            detailGroups.Count + 1);
+            detailPageNumber + 1,
+            dealerFirst,
+            feeCurrency);
 
         ComposeSingleSheet(
             workbook,
@@ -122,8 +148,31 @@ public sealed class InvoiceService
             summaryDealer,
             dealerSummaryLastRow);
 
-        using var output = File.Create(outputPath);
-        workbook.Write(output, leaveOpen: false);
+        // 전체저장은 완성된 파일만 이동하고 기존 인보이스는 번호를 붙여 보존한다.
+        string temporaryPath = Path.Combine(outputFolder, $".{Guid.NewGuid():N}.tmp");
+        try
+        {
+            using (var output = File.Create(temporaryPath))
+                workbook.Write(output, leaveOpen: false);
+            string basePath = outputPath;
+            for (int suffix = 2; ; suffix++)
+            {
+                try
+                {
+                    File.Move(temporaryPath, outputPath, overwrite: outputDirectory is null);
+                    break;
+                }
+                catch (IOException) when (outputDirectory is not null && File.Exists(outputPath))
+                {
+                    outputPath = Path.Combine(outputFolder,
+                        $"{Path.GetFileNameWithoutExtension(basePath)} ({suffix}){Path.GetExtension(basePath)}");
+                }
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
         return outputPath;
     }
 
@@ -139,8 +188,12 @@ public sealed class InvoiceService
     private static int WriteSwap(
         ISheet sheet,
         Institution institution,
+        string invoiceTitle,
         IReadOnlyList<TradeRow> rows,
-        int pageNumber)
+        int pageNumber,
+        bool includeTotal,
+        IReadOnlyList<TradeRow> totalRows,
+        string feeCurrency)
     {
         int extraRows = Math.Max(0, rows.Count - SwapTemplateCapacity);
         if (extraRows > 0)
@@ -161,9 +214,9 @@ public sealed class InvoiceService
         string dealer = SingleOrMultiple(rows.Select(x => x.Dealer));
         string product = SingleOrMultiple(
             rows.Select(x => NormalizeDisplayProduct(x.Product)));
+        string brokerageCurrency = feeCurrency.Trim().ToUpperInvariant();
 
-        // 문서 제목은 front 시트에 한 번만 출력한다.
-        Set(sheet, "K2", string.Empty);
+        Set(sheet, "K2", invoiceTitle);
         Set(sheet, "B5", institution.Name);
         Set(sheet, "V5", $"DEALER: {dealer}");
         Set(sheet, "AN5", $"PRODUCT - {product}");
@@ -219,11 +272,15 @@ public sealed class InvoiceService
             Set(sheet, Cell(rowIndex, 71), trade.BrokerageAmount);      // BT
         }
 
-        Set(sheet, Cell(totalRow, 59), $"TOTAL - {product} KRW"); // BH
+        if (!includeTotal)
+            return SwapDataStartRow + rows.Count - 1;
+
+        Set(sheet, Cell(totalRow, 59), $"TOTAL - {product} {brokerageCurrency}"); // BH
         Set(
             sheet,
             Cell(totalRow, 71),
-            rows.Sum(x => x.BrokerageAmount));                   // BT
+            totalRows.Sum(x => x.BrokerageAmount));              // BT
+        ApplyTotalBorders(sheet, totalRow, 1, 77);
 
         return totalRow;
     }
@@ -268,9 +325,11 @@ public sealed class InvoiceService
         Institution institution,
         string summaryTitle,
         IReadOnlyList<TradeRow> rows,
-        int pageNumber)
+        int pageNumber,
+        bool dealerFirst,
+        string feeCurrency)
     {
-        var summaries = rows
+        var groupedSummaries = rows
             .GroupBy(
                 x => new
                 {
@@ -283,13 +342,20 @@ public sealed class InvoiceService
                 x.Key.Product,
                 Brokerage = x.Sum(y => y.BrokerageAmount)
             })
-            .OrderBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.Product, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var summaries = dealerFirst
+            ? groupedSummaries
+                .OrderBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Product, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : groupedSummaries
+                .OrderBy(x => x.Product, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Dealer, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
         Set(sheet, "K2", summaryTitle);
         Set(sheet, "BV4", $"PAGE : {pageNumber}");
-        EnsureStyledRows(sheet, 5, summaries.Count, 5);
+        EnsureStyledRows(sheet, 5, summaries.Count + 2, 5);
 
         for (int index = 0; index < summaries.Count; index++)
         {
@@ -301,7 +367,40 @@ public sealed class InvoiceService
             Set(sheet, Cell(rowIndex, 66), summaries[index].Brokerage);// BO
         }
 
-        return Math.Max(5, 5 + summaries.Count - 1);
+        decimal totalBrokerage = summaries.Sum(x => x.Brokerage);
+        string brokerageCurrency = feeCurrency.Trim().ToUpperInvariant();
+        int sumRow = 5 + summaries.Count;
+        int totalRow = sumRow + 1;
+
+        Set(sheet, Cell(sumRow, 29), "SUM");                         // AD
+        Set(sheet, Cell(sumRow, 58), brokerageCurrency);              // BG
+        MergeIfNeeded(sheet, sumRow, 66, 77);                         // BO:BZ
+        Set(sheet, Cell(sumRow, 66), totalBrokerage);                  // BO
+
+        Set(sheet, Cell(totalRow, 1), "TOTAL");                       // B
+        Set(sheet, Cell(totalRow, 58), brokerageCurrency);            // BG
+        MergeIfNeeded(sheet, totalRow, 66, 77);                       // BO:BZ
+        Set(sheet, Cell(totalRow, 66), totalBrokerage);                // BO
+        ApplyTotalBorders(sheet, totalRow, 1, 77);
+
+        return totalRow;
+    }
+
+    private static bool UsesDealerFirstOrdering(string institutionName)
+    {
+        string normalizedName = string.Join(
+            " ",
+            institutionName.Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries))
+            .ToUpperInvariant();
+
+        return normalizedName is
+            "IBK SEOUL" or
+            "IKB SEOUL" or
+            "KB SEOUL" or
+            "MIRAE ASSET SECURITIES" or
+            "NH INV";
     }
 
     private static void ComposeSingleSheet(
@@ -312,7 +411,9 @@ public sealed class InvoiceService
         ISheet summaryDealer,
         int dealerSummaryLastRow)
     {
-        int nextRow = front.LastRowNum + 2;
+        // front 템플릿에는 사용하지 않는 서식 행이 남아 있으므로 LastRowNum을 쓰면
+        // 첫 상세 페이지 앞에 빈 인쇄 페이지가 생긴다. 첫 장은 Excel 1~28행으로 고정한다.
+        int nextRow = FrontPageRowCount;
 
         foreach ((ISheet detailSheet, int detailLastRow) in detailSections)
         {
@@ -323,12 +424,25 @@ public sealed class InvoiceService
                 0,
                 detailLastRow,
                 detailStartRow);
+            CopyPictures(
+                detailSheet,
+                front,
+                0,
+                detailLastRow,
+                detailStartRow,
+                HalfRowAnchorOffset);
             front.SetRowBreak(detailStartRow - 1);
             nextRow += detailLastRow + 2;
         }
 
         int dealerSummaryStartRow = nextRow;
         CopySheetBlock(
+            summaryDealer,
+            front,
+            0,
+            dealerSummaryLastRow,
+            dealerSummaryStartRow);
+        CopyPictures(
             summaryDealer,
             front,
             0,
@@ -432,6 +546,67 @@ public sealed class InvoiceService
         }
     }
 
+    private static void CopyPictures(
+        ISheet source,
+        ISheet target,
+        int sourceStartRow,
+        int sourceEndRow,
+        int targetStartRow,
+        int verticalAnchorOffset = 0)
+    {
+        if (source is not HSSFSheet sourceSheet || target is not HSSFSheet targetSheet)
+            return;
+
+        HSSFPatriarch? sourceDrawing = sourceSheet.DrawingPatriarch as HSSFPatriarch;
+        if (sourceDrawing is null)
+            return;
+
+        HSSFPatriarch targetDrawing = targetSheet.DrawingPatriarch as HSSFPatriarch
+            ?? (HSSFPatriarch)targetSheet.CreateDrawingPatriarch();
+        int rowOffset = targetStartRow - sourceStartRow;
+
+        foreach (HSSFShape shape in sourceDrawing.Children)
+        {
+            if (shape is not HSSFPicture picture ||
+                picture.ClientAnchor is not HSSFClientAnchor sourceAnchor ||
+                sourceAnchor.Row1 < sourceStartRow ||
+                sourceAnchor.Row2 > sourceEndRow + 1)
+                continue;
+
+            (int firstRow, int firstDy) = ShiftAnchorVertically(
+                sourceAnchor.Row1 + rowOffset,
+                sourceAnchor.Dy1,
+                verticalAnchorOffset);
+            (int lastRow, int lastDy) = ShiftAnchorVertically(
+                sourceAnchor.Row2 + rowOffset,
+                sourceAnchor.Dy2,
+                verticalAnchorOffset);
+
+            var targetAnchor = new HSSFClientAnchor(
+                sourceAnchor.Dx1,
+                firstDy,
+                sourceAnchor.Dx2,
+                lastDy,
+                sourceAnchor.Col1,
+                firstRow,
+                sourceAnchor.Col2,
+                lastRow)
+            {
+                AnchorType = sourceAnchor.AnchorType
+            };
+            targetDrawing.CreatePicture(targetAnchor, picture.PictureIndex);
+        }
+    }
+
+    private static (int Row, int Dy) ShiftAnchorVertically(
+        int row,
+        int dy,
+        int offset)
+    {
+        int shifted = dy + offset;
+        return (row + shifted / 256, shifted % 256);
+    }
+
     private static void RemoveSheet(
         HSSFWorkbook workbook,
         string sheetName)
@@ -487,6 +662,26 @@ public sealed class InvoiceService
                 rowIndex,
                 firstColumn,
                 lastColumn));
+    }
+
+    private static void ApplyTotalBorders(
+        ISheet sheet,
+        int rowIndex,
+        int firstColumn,
+        int lastColumn)
+    {
+        IRow row = sheet.GetRow(rowIndex) ?? sheet.CreateRow(rowIndex);
+        for (int columnIndex = firstColumn;
+             columnIndex <= lastColumn;
+             columnIndex++)
+        {
+            ICell cell = row.GetCell(columnIndex) ?? row.CreateCell(columnIndex);
+            ICellStyle borderedStyle = sheet.Workbook.CreateCellStyle();
+            borderedStyle.CloneStyleFrom(cell.CellStyle);
+            borderedStyle.BorderTop = NPOI.SS.UserModel.BorderStyle.Thin;
+            borderedStyle.BorderBottom = NPOI.SS.UserModel.BorderStyle.Medium;
+            cell.CellStyle = borderedStyle;
+        }
     }
 
     private static void InsertStyledMergedRows(

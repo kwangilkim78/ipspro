@@ -161,32 +161,17 @@ public sealed class BackOfficeForm : Form
 
         AddSection("수수료");
         AddScreen(ScreenPermissionCatalog.Invoice, "Invoice", () => new MainForm(repository, invoiceService, businessDaySettings));
-        AddScreen(ScreenPermissionCatalog.BrokerageFee, "기관별 중개 수수료", () => new BrokerageFeeForm(brokerageFeeRepository));
+        AddScreen(ScreenPermissionCatalog.BrokerageFee, "중개 수수료 관리", () => new BrokerageFeeManagementForm(brokerageFeeRepository, apiFeeExemptionRepository));
         AddScreen(ScreenPermissionCatalog.BrokerageFee, "스위치 수수료", () => new SwitchFeeRuleForm(switchFeeRuleRepository));
-        AddScreen(ScreenPermissionCatalog.BrokerageFee, "API 수수료 면제 관리", () => new ApiFeeExemptionForm(apiFeeExemptionRepository));
+        AddScreen(ScreenPermissionCatalog.DailyFeeTotal, "월/일별 수수료", () => new DailyFeeTotalForm(repository, brokerageFeeRepository, businessDaySettings));
         AddScreen(ScreenPermissionCatalog.FeeRevenue, "매출 수수료 조회", () => new FeeRevenueByBankForm(repository, brokerageFeeRepository, businessDaySettings));
+        AddScreen(ScreenPermissionCatalog.MonthlyFeeStatement, "수수료 계산서 내역", () => new MonthlyFeeStatementForm(repository, brokerageFeeRepository, businessDaySettings));
 
         AddSection("기준정보");
-        MasterDataForm? dealerMasterDataForm = null;
-        Button? dealerMasterDataButton = null;
         AddScreen(
             ScreenPermissionCatalog.MasterData,
-            "기관 정보",
-            () => new MasterDataForm(
-                masterDataRepository,
-                MasterDataScreen.Institutions,
-                externalInstitutionId =>
-                {
-                    if (dealerMasterDataForm is null || dealerMasterDataButton is null)
-                        return;
-
-                    dealerMasterDataForm.SelectInstitution(externalInstitutionId);
-                    ShowScreen(dealerMasterDataButton);
-                }));
-        dealerMasterDataButton = AddScreen(
-            ScreenPermissionCatalog.MasterData,
-            "딜러 정보",
-            () => dealerMasterDataForm = new MasterDataForm(masterDataRepository, MasterDataScreen.Dealers));
+            "기관·딜러 정보",
+            () => new MasterDataForm(masterDataRepository, MasterDataScreen.Combined));
         AddScreen(ScreenPermissionCatalog.CreditMatrix, "전체 기관 한도 매트릭스", () => new CreditLimitMatrixForm(creditRepository));
         AddScreen(ScreenPermissionCatalog.FxValueDate, "Settle Date", () => new FxValueDateForm(fxValueDateRepository));
 
@@ -332,27 +317,6 @@ public sealed class BackOfficeForm : Form
 
     private static void ApplyUnifiedTheme(Control control)
     {
-        switch (control)
-        {
-            case Form:
-            case TabControl:
-            case TabPage:
-            case FlowLayoutPanel:
-            case TableLayoutPanel:
-            case Panel:
-            case GroupBox:
-                control.BackColor = UnifiedBackground;
-                break;
-            case Label label:
-                label.BackColor = Color.Transparent;
-                break;
-            case DataGridView grid:
-                grid.BackgroundColor = UnifiedBackground;
-                grid.DefaultCellStyle.BackColor = Color.White;
-                break;
-        }
-
-        foreach (Control child in control.Controls)
-            ApplyUnifiedTheme(child);
+        BackOfficeTheme.Apply(control);
     }
 }
