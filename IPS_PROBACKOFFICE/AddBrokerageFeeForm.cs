@@ -89,9 +89,11 @@ internal sealed class AddBrokerageFeeForm : Form
 
     private void SaveAndClose()
     {
-        if (!int.TryParse(_instCode.Text.Trim(), out int instCode) || instCode <= 0)
+        string instCode = _instCode.Text.Trim();
+        if (instCode.Length > 20 || !System.Text.RegularExpressions.Regex.IsMatch(instCode, @"\A[0-9]+(?:-[0-9]+)?\z")
+            || !instCode.Any(c => c is >= '1' and <= '9'))
         {
-            ShowInputError("기관코드는 0보다 큰 숫자로 입력해 주세요.", _instCode);
+            ShowInputError("기관코드는 20자 이내의 숫자 또는 숫자-숫자 형식으로 입력해 주세요. (예: 1123-1)", _instCode);
             return;
         }
 

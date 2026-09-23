@@ -8,9 +8,9 @@ namespace IPS_PROBACKOFFICE;
 public sealed class TradeImportForm : Form
 {
     private readonly TradeImportRepository _repository;
-    private readonly TextBox _filePath = new() { ReadOnly = true, Width = 620 };
-    private readonly Button _selectButton = new() { Text = "CSV 선택", Width = 110 };
-    private readonly Button _importButton = new() { Text = "TRADES 입력", Width = 130, Enabled = false };
+    private readonly TextBox _filePath = new() { ReadOnly = true, Dock = DockStyle.Fill, Anchor = AnchorStyles.Left | AnchorStyles.Right };
+    private readonly Button _selectButton = new() { Text = "CSV 선택", AutoSize = true, MinimumSize = new Size(110, 36), Anchor = AnchorStyles.None };
+    private readonly Button _importButton = new() { Text = "TRADES 입력", AutoSize = true, MinimumSize = new Size(130, 36), Anchor = AnchorStyles.None, Enabled = false };
     private readonly DataGridView _grid = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells };
     private readonly ToolStripStatusLabel _status = new() { Text = "CSV 파일을 선택하세요." };
     private DataTable? _data;
@@ -19,11 +19,20 @@ public sealed class TradeImportForm : Form
     {
         _repository = repository;
         Font = new Font("맑은 고딕", 10F);
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 58, Padding = new Padding(10), WrapContents = false };
-        top.Controls.Add(new Label { Text = "거래 CSV", AutoSize = true, Margin = new Padding(0, 8, 6, 0) });
-        top.Controls.Add(_filePath);
-        top.Controls.Add(_selectButton);
-        top.Controls.Add(_importButton);
+        var top = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10), ColumnCount = 4, RowCount = 1
+        };
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        top.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        top.Controls.Add(new Label { Text = "거래 CSV", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 3, 8, 3) }, 0, 0);
+        top.Controls.Add(_filePath, 1, 0);
+        top.Controls.Add(_selectButton, 2, 0);
+        top.Controls.Add(_importButton, 3, 0);
         var strip = new StatusStrip();
         strip.Items.Add(_status);
         Controls.Add(_grid);

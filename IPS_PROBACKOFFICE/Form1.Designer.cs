@@ -21,6 +21,9 @@
         private TextBox textBox5 = null!;
         private TextBox textBox6 = null!;
         private TextBox textBox7 = null!;
+        private CheckBox allRatesCheckBox = null!;
+        private TextBox commonRateTextBox = null!;
+        private TextBox commonPointsTextBox = null!;
         private DateTimePicker nyCloseHistoryDate = null!;
         private DataGridView nyCloseHistoryGrid = null!;
         private Label nyCloseHistoryStatus = null!;
@@ -70,6 +73,9 @@
             textBox5 = new TextBox();
             textBox6 = new TextBox();
             textBox7 = new TextBox();
+            allRatesCheckBox = new CheckBox();
+            commonRateTextBox = new TextBox();
+            commonPointsTextBox = new TextBox();
             nyCloseHistoryDate = new DateTimePicker();
             nyCloseHistoryGrid = new DataGridView();
             nyCloseHistoryStatus = new Label();
@@ -111,6 +117,7 @@
             btnBokExcel.AutoSize = true;
             btnBokExcel.Click += btnBokExcel_Click;
             bokToolbar.Controls.Add(btnBokExcel);
+            bokToolbar.Controls.Add(bokValidationLabel);
 
             dataGridView1.Name = "dataGridView1";
             dataGridView1.Dock = DockStyle.Fill;
@@ -165,9 +172,25 @@
             dataGridView2.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
 
             ratePanel.Dock = DockStyle.Top;
-            ratePanel.Height = 90;
+            ratePanel.AutoSize = true;
+            ratePanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             ratePanel.Padding = new Padding(14);
             ratePanel.WrapContents = true;
+            allRatesCheckBox.Text = "전체 입력 (해제 시 개별 입력)";
+            allRatesCheckBox.AutoSize = true;
+            allRatesCheckBox.Checked = true;
+            allRatesCheckBox.Margin = new Padding(3, 8, 12, 0);
+            allRatesCheckBox.CheckedChanged += AllRatesCheckBox_CheckedChanged;
+            ratePanel.Controls.Add(allRatesCheckBox);
+            ratePanel.Controls.Add(new Label { Text = "환율", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
+            commonRateTextBox.Width = 90;
+            commonRateTextBox.TextChanged += CommonRates_TextChanged;
+            ratePanel.Controls.Add(commonRateTextBox);
+            ratePanel.Controls.Add(new Label { Text = "포인트", AutoSize = true, Margin = new Padding(12, 8, 3, 0) });
+            commonPointsTextBox.Width = 90;
+            commonPointsTextBox.TextChanged += CommonRates_TextChanged;
+            ratePanel.Controls.Add(commonPointsTextBox);
+            ratePanel.SetFlowBreak(commonPointsTextBox, true);
             ratePanel.Controls.Add(new Label { Text = "DF", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
             foreach (var box in new[] { textBox1, textBox2, textBox3, textBox4, textBox5, textBox6 })
                 box.Width = 90;

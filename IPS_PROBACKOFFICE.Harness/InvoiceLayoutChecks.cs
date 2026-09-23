@@ -69,6 +69,21 @@ static void VerifyInvoicePagination(string harnessDirectory, bool bulk)
     using var input = File.OpenRead(invoicePath);
     var workbook = new HSSFWorkbook(input);
     ISheet sheet = workbook.GetSheetAt(0);
+    var ndfTenorInstitution = new Institution("4", "NDF Tenor Harness", null, null);
+    var ndfTenorTrade = new TradeRow
+    {
+        TradeDate = new DateTime(2026, 8, 14), RefNumber = "HARNESS-NDF-TENOR",
+        Direction = "B", Counterparty = "SCB LONDON", Tenor = "NDF 1M",
+        Product = "NDF 1M", ExchangeRate = 1376.5m, Amount = 1_000_000m,
+        ValueDate = new DateTime(2026, 9, 14), Dealer = "Dealer A",
+        Brokerage = "10000", InstitutionCode = "4", InstitutionName = ndfTenorInstitution.Name
+    };
+    string ndfTenorPath = CreateInvoice(ndfTenorInstitution, new DateTime(2026, 8, 1), [ndfTenorTrade]);
+    using var ndfTenorInput = File.OpenRead(ndfTenorPath);
+    var ndfTenorWorkbook = new HSSFWorkbook(ndfTenorInput);
+    ISheet ndfTenorSheet = ndfTenorWorkbook.GetSheetAt(0);
+    int ndfTradeRow = FindText(ndfTenorSheet, "HARNESS-NDF-TENOR")!.Value;
+    Require(CellText(ndfTenorSheet, ndfTradeRow, 33) == "1M", "NDF 인보이스 TENOR가 1M이 아닙니다.");
     Require(sheet.RowBreaks.Contains(27), "첫 상세 페이지 앞에 정확한 페이지 나누기가 없습니다.");
     Require(FindText(sheet, "INVOICE - Aug 2026", 28) is int detailTitleRow && detailTitleRow < 35,
         "빈 2페이지 없이 상세 제목이 이어지지 않았습니다.");

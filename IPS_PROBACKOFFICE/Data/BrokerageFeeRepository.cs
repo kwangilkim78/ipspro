@@ -46,7 +46,7 @@ public sealed class BrokerageFeeRepository
         while (await reader.ReadAsync(cancellationToken))
         {
             result.Add(new BrokerageFeeRow(
-                reader.GetInt32("inst_code"),
+                Convert.ToString(reader["inst_code"]) ?? string.Empty,
                 reader.GetString("institution_name"),
                 GetNullableDecimal(reader, "df_1m_fee"),
                 GetNullableDecimal(reader, "ndf_1m_fee"),
@@ -150,7 +150,7 @@ public sealed class BrokerageFeeRepository
     }
 
     public async Task<bool> DeleteAsync(
-        int instCode,
+        string instCode,
         CancellationToken cancellationToken = default)
     {
         const string sql = """

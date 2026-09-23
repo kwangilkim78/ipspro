@@ -3,7 +3,7 @@ namespace IPS_PROBACKOFFICE.Models;
 public sealed class BrokerageFeeRow
 {
     public BrokerageFeeRow(
-        int instCode,
+        string instCode,
         string institutionName,
         decimal? df1mFee,
         decimal? ndf1mFee,
@@ -22,7 +22,7 @@ public sealed class BrokerageFeeRow
         Remarks = remarks;
     }
 
-    public int InstCode { get; }
+    public string InstCode { get; }
     public string InstitutionName { get; }
     public decimal? Df1mFee { get; set; }
     public decimal? Ndf1mFee { get; set; }

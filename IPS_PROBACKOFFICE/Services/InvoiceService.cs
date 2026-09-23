@@ -859,8 +859,8 @@ public sealed class InvoiceService
         string product = NormalizeText(trade.Product);
 
         if (!trade.IsSwitch &&
-            product == "DF 1M" &&
-            tenor == "DF 1M")
+            ((product == "DF 1M" && tenor == "DF 1M") ||
+             (product == "NDF 1M" && tenor == "NDF 1M")))
             return "1M";
 
         return trade.Tenor?.Trim() ?? string.Empty;

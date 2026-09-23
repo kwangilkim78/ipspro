@@ -16,6 +16,7 @@ public sealed class MasterDataRepository
 
     public async Task<IReadOnlyList<Institution>> GetInstitutionsAsync()
     {
+        // 신규 기관도 이 화면에서 기관코드를 등록할 수 있도록 로컬 코드 유무로 제한하지 않는다.
         const string sql = """
             SELECT o.id AS external_institution_id,
                    o.slug,
@@ -28,7 +29,8 @@ public sealed class MasterDataRepository
               LEFT JOIN ips_ew.institution_local_info l
                 ON l.external_institution_id = o.id
              WHERE COALESCE(o.enabled, 0) = 1
-              AND NULLIF(TRIM(l.institution_code), '') IS NOT NULL
+               AND o.slug NOT IN ('ips-monitoring', 'moef', 'bank-of-korea')
+               AND LOWER(TRIM(o.name)) <> 'bank of korea'
             ORDER BY o.name, o.id
             """;
 

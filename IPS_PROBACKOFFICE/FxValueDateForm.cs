@@ -278,8 +278,8 @@ public sealed partial class FxValueDateForm : Form
         table.Columns.Add("기준일", typeof(DateTime));
         table.Columns.Add("Tenor", typeof(string));
         table.Columns.Add("Start Date", typeof(DateTime));
-        table.Columns.Add("Settle Date", typeof(DateTime));
         table.Columns.Add("Fixing Date", typeof(DateTime));
+        table.Columns.Add("Settle Date", typeof(DateTime));
         table.Columns.Add("Days", typeof(int));
 
         if (selectedTenors.Contains("O/N"))
@@ -330,8 +330,8 @@ public sealed partial class FxValueDateForm : Form
         DateTime settleDate,
         DateTime? fixingDate,
         int days) =>
-        table.Rows.Add(tradeDate, tenor, startDate, settleDate,
-            (object?)fixingDate ?? DBNull.Value, days);
+        table.Rows.Add(tradeDate, tenor, startDate,
+            (object?)fixingDate ?? DBNull.Value, settleDate, days);
 
     private static DateTime RollFollowing(DateTime date, Func<DateTime, bool> isBusinessDay)
     {

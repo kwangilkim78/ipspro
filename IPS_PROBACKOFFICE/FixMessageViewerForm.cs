@@ -8,6 +8,13 @@ namespace IPS_PROBACKOFFICE;
 public sealed class FixMessageViewerForm : Form
 {
     private readonly StpRouterMessageRepository _repository;
+    private readonly InvoiceReportPrinter.WinForms.Data.TradeRepository _institutionRepository;
+    private readonly ComboBox _institution = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 230,
+        Enabled = false
+    };
 
     private readonly DateTimePicker _from = CreateDatePicker();
     private readonly DateTimePicker _to = CreateDatePicker();
@@ -36,12 +43,24 @@ public sealed class FixMessageViewerForm : Form
     private readonly DataGridView _fields = new();
     private readonly TextBox _raw = new();
 
-    private readonly BindingList<MessageGridRow> _rows = [];
+    private readonly SortableBindingList<MessageGridRow> _rows = new();
+    private readonly List<MessageGridRow> _allRows = new();
+    private readonly RadioButton _allDestinations = new() { Text = "전체", AutoSize = true, Checked = true };
+    private readonly RadioButton _rtnsDestination = new() { Text = "RTNS", AutoSize = true };
+    private readonly RadioButton _trianaDestination = new() { Text = "TRAIANA", AutoSize = true };
+    private readonly FlowLayoutPanel _destination = new()
+    {
+        AutoSize = true,
+        WrapContents = false,
+        Margin = new Padding(3, 5, 3, 0)
+    };
 
     public FixMessageViewerForm(
-        StpRouterMessageRepository repository)
+        StpRouterMessageRepository repository,
+        InvoiceReportPrinter.WinForms.Data.TradeRepository institutionRepository)
     {
         _repository = repository;
+        _institutionRepository = institutionRepository;
 
         Text = "FIX 전문 조회";
         Font = new Font("맑은 고딕", 10F);
@@ -65,6 +84,13 @@ public sealed class FixMessageViewerForm : Form
 
         toolbar.Controls.Add(LabelFor("검색", 12));
         toolbar.Controls.Add(_keyword);
+        toolbar.Controls.Add(LabelFor("기관", 12));
+        _institution.Items.Add(new InstitutionOption("전체 기관", null));
+        _institution.SelectedIndex = 0;
+        toolbar.Controls.Add(_institution);
+        toolbar.Controls.Add(LabelFor("구분", 12));
+        _destination.Controls.AddRange(new Control[] { _allDestinations, _rtnsDestination, _trianaDestination });
+        toolbar.Controls.Add(_destination);
         toolbar.Controls.Add(_search);
         toolbar.Controls.Add(_result);
 
@@ -112,11 +138,42 @@ public sealed class FixMessageViewerForm : Form
 
         _messages.SelectionChanged += (_, _) =>
             ShowSelectedMessage();
+        _institution.SelectedIndexChanged += (_, _) => ApplyDestinationFilter();
+        foreach (var option in new[] { _allDestinations, _rtnsDestination, _trianaDestination })
+            option.CheckedChanged += (_, _) =>
+            {
+                if (option.Checked)
+                    ApplyDestinationFilter();
+            };
+        _messages.CellFormatting += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                _messages.Columns[e.ColumnIndex].DataPropertyName != nameof(MessageGridRow.Destination))
+                return;
+            bool triana = Equals(e.Value, "TRAIANA");
+            e.CellStyle.BackColor = triana ? Color.Lavender : Color.FromArgb(225, 243, 250);
+            e.CellStyle.ForeColor = triana ? Color.Indigo : Color.FromArgb(0, 75, 110);
+            e.CellStyle.SelectionBackColor = triana ? Color.Indigo : Color.FromArgb(0, 75, 110);
+            e.CellStyle.SelectionForeColor = Color.White;
+        };
 
-        Shown += (_, _) =>
+        Shown += async (_, _) =>
         {
             SetSafeSplitterDistance(main, 0.56);
             SetSafeSplitterDistance(lower, 0.55);
+            try
+            {
+                var institutions = await _institutionRepository.GetInstitutionsAsync();
+                foreach (var institution in institutions.Where(item => !string.IsNullOrWhiteSpace(item.RtnsOrgCode)))
+                    _institution.Items.Add(new InstitutionOption(
+                        $"{institution.Name} ({institution.RtnsOrgCode!.Trim()})", institution.RtnsOrgCode.Trim()));
+                _institution.Enabled = true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "기관 목록을 불러오지 못했습니다: " + ex.Message,
+                    "FIX 전문 조회", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         };
     }
 
@@ -137,8 +194,10 @@ public sealed class FixMessageViewerForm : Form
         }
 
         _search.Enabled = false;
+        _destination.Enabled = false;
         _result.Text = "조회 중...";
 
+        _allRows.Clear();
         _rows.Clear();
         _fields.DataSource = null;
         _raw.Clear();
@@ -161,21 +220,11 @@ public sealed class FixMessageViewerForm : Form
 
             foreach (StpRouterMessage item in records)
             {
-                _rows.Add(
+                _allRows.Add(
                     new MessageGridRow(item));
             }
 
-            _result.Text = records.Count >= 5000
-                ? "5,000건 표시 · 조건을 좁혀주세요."
-                : $"조회 완료 · {records.Count:N0}건";
-
-            if (_messages.Rows.Count > 0)
-            {
-                _messages.ClearSelection();
-                _messages.Rows[0].Selected = true;
-                _messages.CurrentCell =
-                    _messages.Rows[0].Cells[0];
-            }
+            ApplyDestinationFilter();
         }
         catch (Exception ex)
         {
@@ -190,7 +239,44 @@ public sealed class FixMessageViewerForm : Form
         finally
         {
             _search.Enabled = true;
+            _destination.Enabled = true;
         }
+    }
+
+    private void ApplyDestinationFilter()
+    {
+        string selected = _rtnsDestination.Checked ? "RTNS"
+            : _trianaDestination.Checked ? "TRAIANA" : "전체";
+        string? institutionCode = (_institution.SelectedItem as InstitutionOption)?.Code;
+        var institutionRows = _allRows.Where(row => institutionCode is null || row.PartyCodes.Contains(institutionCode)).ToList();
+        _rows.RaiseListChangedEvents = false;
+        try
+        {
+            _rows.Clear();
+            foreach (var row in institutionRows)
+                if (selected == "전체" || row.Destination == selected)
+                    _rows.Add(row);
+            _rows.ReapplySort();
+        }
+        finally
+        {
+            _rows.RaiseListChangedEvents = true;
+            _rows.ResetBindings();
+        }
+
+        int rtns = institutionRows.Count(row => row.Destination == "RTNS");
+        int triana = institutionRows.Count(row => row.Destination == "TRAIANA");
+        _result.Text = $"표시 {_rows.Count:N0}건 · RTNS {rtns:N0} / TRAIANA {triana:N0}";
+        if (_allRows.Count >= 5000)
+            _result.Text += " · 조회 상한 5,000건 내 필터 · 조건을 좁혀주세요.";
+
+        if (_messages.Rows.Count > 0)
+        {
+            _messages.ClearSelection();
+            _messages.CurrentCell = _messages.Rows[0].Cells[0];
+            _messages.Rows[0].Selected = true;
+        }
+        ShowSelectedMessage();
     }
 
     private void ShowSelectedMessage()
@@ -264,6 +350,10 @@ public sealed class FixMessageViewerForm : Form
             DataGridViewAutoSizeColumnMode.Fill);
 
         _messages.DataSource = _rows;
+        _messages.Columns[0].DefaultCellStyle.Format = "yyyy-MM-dd HH:mm:ss";
+
+        foreach (DataGridViewColumn column in _messages.Columns)
+            column.SortMode = DataGridViewColumnSortMode.Automatic;
     }
 
     private void ConfigureFieldGrid()
@@ -418,13 +508,21 @@ public sealed class FixMessageViewerForm : Form
                 available - 1);
     }
 
+    private sealed record InstitutionOption(string Label, string? Code)
+    {
+        public override string ToString() => Label;
+    }
+
     private sealed class MessageGridRow
     {
         public MessageGridRow(
             StpRouterMessage source)
         {
             Source = source;
-            Destination = FixMessageParser.Parse(source.Message)
+            var fields = FixMessageParser.Parse(source.Message);
+            PartyCodes = fields.Where(field => field.Tag == "448")
+                .Select(field => field.Value.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Destination = fields
                 .Any(field => field.Tag == "56" && string.Equals(
                     field.Value, "traianaprod", StringComparison.OrdinalIgnoreCase))
                 ? "TRAIANA"
@@ -434,12 +532,14 @@ public sealed class FixMessageViewerForm : Form
         [Browsable(false)]
         public StpRouterMessage Source { get; }
 
+        [Browsable(false)]
+        public HashSet<string> PartyCodes { get; }
+
         public string Destination { get; }
 
-        public string CreatedKst =>
+        public DateTime CreatedKst =>
             Source.Created
-                .AddHours(9)
-                .ToString("yyyy-MM-dd HH:mm:ss");
+                .AddHours(9);
 
         public int MessageId =>
             Source.MessageId;
@@ -456,5 +556,44 @@ public sealed class FixMessageViewerForm : Form
         public string Preview =>
             FixMessageParser.ToDisplayText(
                 Source.Message);
+    }
+
+    private sealed class SortableBindingList<T> : BindingList<T>
+    {
+        private PropertyDescriptor? _sortProperty;
+        private ListSortDirection _sortDirection;
+
+        protected override bool SupportsSortingCore => true;
+        protected override bool IsSortedCore => _sortProperty is not null;
+        protected override PropertyDescriptor? SortPropertyCore => _sortProperty;
+        protected override ListSortDirection SortDirectionCore => _sortDirection;
+
+        protected override void ApplySortCore(
+            PropertyDescriptor property,
+            ListSortDirection direction)
+        {
+            // OrderBy is stable and compares numeric/date properties by their actual type.
+            var sorted = direction == ListSortDirection.Ascending
+                ? Items.OrderBy(item => property.GetValue(item)).ToList()
+                : Items.OrderByDescending(item => property.GetValue(item)).ToList();
+
+            for (int index = 0; index < sorted.Count; index++)
+                Items[index] = sorted[index];
+
+            _sortProperty = property;
+            _sortDirection = direction;
+            ResetBindings();
+        }
+
+        public void ReapplySort()
+        {
+            if (_sortProperty is not null)
+                ApplySortCore(_sortProperty, _sortDirection);
+        }
+
+        protected override void RemoveSortCore()
+        {
+            _sortProperty = null;
+        }
     }
 }

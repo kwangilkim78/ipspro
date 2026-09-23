@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using InvoiceReportPrinter.WinForms.Models;
 using IPS_PROBACKOFFICE.Data;
 using IPS_PROBACKOFFICE.Models;
@@ -74,7 +74,15 @@ public sealed class MasterDataForm : Form
                     split.SplitterDistance = Math.Clamp((int)(available * 0.45),
                         split.Panel1MinSize, available - split.Panel2MinSize);
             };
-            _institutionGrid.SelectionChanged += async (_, _) => await ReloadDealersAsync();
+            long? currentInstitutionId = null;
+            _institutionGrid.CurrentCellChanged += async (_, _) =>
+            {
+                if (_busy) return;
+                var institutionId = SelectedInstitution?.ExternalInstitutionId;
+                if (institutionId == currentInstitutionId) return;
+                currentInstitutionId = institutionId;
+                await ReloadDealersAsync();
+            };
         }
         else if (_screen == MasterDataScreen.Institutions)
         {
@@ -158,18 +166,9 @@ public sealed class MasterDataForm : Form
         AddColumn(_institutionGrid, nameof(Institution.RtnsOrgCode), "RTNS ORG CODE", 150);
         AddColumn(_institutionGrid, nameof(Institution.Slug), "SLUG", 210);
         _institutionGrid.CellDoubleClick += async (_, e) => { if (e.RowIndex >= 0) await EditInstitutionCodeAsync(); };
-        var contextMenu = new ContextMenuStrip();
+        var contextMenu = AddCopyMenu(_institutionGrid);
+        contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add("선택된 기관 딜러 정보", null, (_, _) => OpenSelectedInstitutionDealers());
-        _institutionGrid.ContextMenuStrip = contextMenu;
-        _institutionGrid.CellMouseDown += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Right && e.RowIndex >= 0)
-            {
-                _institutionGrid.ClearSelection();
-                _institutionGrid.Rows[e.RowIndex].Selected = true;
-                _institutionGrid.CurrentCell = _institutionGrid.Rows[e.RowIndex].Cells[Math.Max(e.ColumnIndex, 0)];
-            }
-        };
     }
 
     private void ConfigureDealerGrid()
@@ -199,6 +198,38 @@ public sealed class MasterDataForm : Form
         AddColumn(_dealerGrid, nameof(DealerInfo.JobTitle), "직급", 130);
         AddColumn(_dealerGrid, nameof(DealerInfo.RtnsTraderCode), "RTNS TRADER CODE", 155);
         _dealerGrid.CellDoubleClick += async (_, e) => { if (e.RowIndex >= 0) await EditDealerKoreanNameAsync(); };
+        AddCopyMenu(_dealerGrid);
+    }
+
+    private static ContextMenuStrip AddCopyMenu(DataGridView grid)
+    {
+        var menu = new ContextMenuStrip();
+        var copy = menu.Items.Add("복사 (Ctrl+C)", null, (_, _) =>
+        {
+            var content = grid.GetClipboardContent();
+            if (content is null) return;
+            try
+            {
+                Clipboard.SetDataObject(content, true);
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                MessageBox.Show("클립보드를 사용할 수 없습니다. 잠시 후 다시 복사해 주세요.", "복사");
+            }
+        });
+        menu.Opening += (_, _) => copy.Enabled = grid.SelectedCells.Count > 0;
+        grid.ContextMenuStrip = menu;
+        grid.Disposed += (_, _) => menu.Dispose();
+        grid.CellMouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            var cell = grid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+            if (cell.Selected) return;
+            grid.ClearSelection();
+            grid.CurrentCell = cell;
+            cell.Selected = true;
+        };
+        return menu;
     }
 
     private async Task ReloadInstitutionsAsync(long? selectExternalId = null)
@@ -357,8 +388,9 @@ public sealed class MasterDataForm : Form
         AllowUserToAddRows = false,
         AllowUserToDeleteRows = false,
         AutoGenerateColumns = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        MultiSelect = false,
+        SelectionMode = DataGridViewSelectionMode.CellSelect,
+        MultiSelect = true,
+        ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText,
         RowHeadersVisible = false,
         AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
         AllowUserToResizeRows = false,
@@ -393,18 +425,19 @@ public sealed class MasterDataForm : Form
     {
         var panel = new TableLayoutPanel
         {
-            Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 1,
+            Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 2,
             BackColor = background, Padding = new Padding(12, 6, 8, 8)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         title.AutoSize = false;
         title.AutoEllipsis = true;
         title.Dock = DockStyle.Fill;
         title.TextAlign = ContentAlignment.MiddleLeft;
         title.Margin = new Padding(0, 0, 12, 0);
         title.ForeColor = accent;
-        var actions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true, Margin = Padding.Empty };
         foreach (var button in buttons)
         {
             button.FlatStyle = FlatStyle.Flat;
@@ -416,7 +449,7 @@ public sealed class MasterDataForm : Form
             actions.Controls.Add(button);
         }
         panel.Controls.Add(title, 0, 0);
-        panel.Controls.Add(actions, 1, 0);
+        panel.Controls.Add(actions, 0, 1);
         return panel;
     }
 

@@ -183,7 +183,8 @@ internal static class HolidayProvider
         yield return (new DateTime(year, 10, 9), "한글날");
         yield return (new DateTime(year, 12, 25), "성탄절");
 
-        // 음력 공휴일과 대체공휴일은 고시된 날짜를 연도별로 관리한다.
+        // 음력 공휴일과 대체공휴일은 연도별 월력요항을 기준으로 관리한다.
+        // 2027: https://www.kasa.go.kr/prog/plcyBrf/brief/kor/sub01_01_04/view.do?plcyBrfNo=431
         if (year == 2026)
         {
             yield return (new DateTime(2026, 2, 16), "설날 연휴");
@@ -197,6 +198,25 @@ internal static class HolidayProvider
             yield return (new DateTime(2026, 9, 25), "추석");
             yield return (new DateTime(2026, 9, 26), "추석 연휴");
             yield return (new DateTime(2026, 10, 5), "개천절 대체공휴일");
+        }
+        else if (year == 2027)
+        {
+            yield return (new DateTime(2027, 2, 6), "설날 연휴");
+            yield return (new DateTime(2027, 2, 7), "설날");
+            yield return (new DateTime(2027, 2, 8), "설날 연휴");
+            yield return (new DateTime(2027, 2, 9), "설날 대체공휴일");
+            yield return (new DateTime(2027, 5, 1), "노동절");
+            yield return (new DateTime(2027, 5, 3), "노동절 대체공휴일");
+            yield return (new DateTime(2027, 5, 13), "부처님오신날");
+            yield return (new DateTime(2027, 7, 17), "제헌절");
+            yield return (new DateTime(2027, 7, 19), "제헌절 대체공휴일");
+            yield return (new DateTime(2027, 8, 16), "광복절 대체공휴일");
+            yield return (new DateTime(2027, 9, 14), "추석 연휴");
+            yield return (new DateTime(2027, 9, 15), "추석");
+            yield return (new DateTime(2027, 9, 16), "추석 연휴");
+            yield return (new DateTime(2027, 10, 4), "개천절 대체공휴일");
+            yield return (new DateTime(2027, 10, 11), "한글날 대체공휴일");
+            yield return (new DateTime(2027, 12, 27), "성탄절 대체공휴일");
         }
     }
 

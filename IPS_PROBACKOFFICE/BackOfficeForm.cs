@@ -1,4 +1,4 @@
-using InvoiceReportPrinter.WinForms;
+﻿using InvoiceReportPrinter.WinForms;
 using InvoiceReportPrinter.WinForms.Data;
 using InvoiceReportPrinter.WinForms.Services;
 using IPS_PROBACKOFFICE.Data;
@@ -168,15 +168,18 @@ public sealed class BackOfficeForm : Form
         AddScreen(ScreenPermissionCatalog.MonthlyFeeStatement, "수수료 계산서 내역", () => new MonthlyFeeStatementForm(repository, brokerageFeeRepository, businessDaySettings));
 
         AddSection("기준정보");
+        var contactEmail = new ContactEmailWorkflow(authRepository, currentUser, audit);
         AddScreen(
             ScreenPermissionCatalog.MasterData,
             "기관·딜러 정보",
             () => new MasterDataForm(masterDataRepository, MasterDataScreen.Combined));
+        AddScreen(ScreenPermissionCatalog.MasterData, "기관별 비상연락망",
+            () => new EmergencyContactForm(new EmergencyContactRepository(repository.ConnectionString), masterDataRepository, currentUser, audit, contactEmail));
         AddScreen(ScreenPermissionCatalog.CreditMatrix, "전체 기관 한도 매트릭스", () => new CreditLimitMatrixForm(creditRepository));
         AddScreen(ScreenPermissionCatalog.FxValueDate, "Settle Date", () => new FxValueDateForm(fxValueDateRepository));
 
         AddSection("시스템");
-        AddScreen(ScreenPermissionCatalog.FixMessage, "FIX 전문 조회", () => new FixMessageViewerForm(stpRouterMessageRepository));
+        AddScreen(ScreenPermissionCatalog.FixMessage, "FIX 전문 조회", () => new FixMessageViewerForm(stpRouterMessageRepository, repository));
         AddScreen(ScreenPermissionCatalog.TradeImport, "거래 CSV 업로드", () => new TradeImportForm(tradeImportRepository));
         AddScreen(ScreenPermissionCatalog.UserManagement, "백오피스 사용자 관리", () => new UserManagementForm(authRepository, currentUser, audit));
 

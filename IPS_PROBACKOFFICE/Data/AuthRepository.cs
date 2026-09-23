@@ -9,6 +9,31 @@ public sealed class AuthRepository
 
     public AuthRepository(string connectionString) => _connectionString = connectionString;
 
+    public async Task<string> GetOwnEmailAsync(long userId)
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+        await connection.OpenAsync();
+        using var command = new MySqlCommand("SELECT COALESCE(email, '') FROM backoffice_user WHERE user_id=@id AND is_active=1", connection);
+        command.Parameters.AddWithValue("@id", userId);
+        return await command.ExecuteScalarAsync() as string
+            ?? throw new InvalidOperationException("사용자 정보를 확인할 수 없습니다. 다시 로그인하세요.");
+    }
+
+    public async Task SaveOwnEmailAsync(long userId, string email)
+    {
+        email = ContactEmailMessage.ValidateAddress(email, "본인 이메일");
+        if (email.Length > 150) throw new ArgumentException("본인 이메일은 150자 이하로 입력하세요.");
+        await using var connection = new MySqlConnection(_connectionString);
+        await connection.OpenAsync();
+        using var command = new MySqlCommand("UPDATE backoffice_user SET email=@email WHERE user_id=@id AND is_active=1", connection);
+        command.Parameters.AddWithValue("@id", userId);
+        command.Parameters.AddWithValue("@email", email);
+        await command.ExecuteNonQueryAsync();
+        // 동일한 주소를 다시 저장했을 때의 affected rows=0도 허용한다.
+        if (!string.Equals(await GetOwnEmailAsync(userId), email, StringComparison.Ordinal))
+            throw new InvalidOperationException("이메일이 저장되지 않았습니다. 다시 시도하세요.");
+    }
+
     public async Task<int> GetActiveUserCountAsync()
     {
         await using var connection = new MySqlConnection(_connectionString);

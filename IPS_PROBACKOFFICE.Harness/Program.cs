@@ -3,6 +3,25 @@ using IPS_PROBACKOFFICE;
 using IPS_PROBACKOFFICE.Services;
 using System.Data;
 
+if (args.Contains("--contact-email-connection"))
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    Console.WriteLine(await ContactEmailTransport.CheckConnectionAsync(timeout.Token));
+    return;
+}
+
+if (args.Contains("--contact-email"))
+{
+    ContactEmailChecks.Run();
+    return;
+}
+
+if (args.Contains("--emergency-contacts"))
+{
+    EmergencyContactChecks.Run();
+    return;
+}
+
 if (args.Contains("--invoice-layout"))
 {
     InvoiceLayoutChecks.Run();
@@ -12,6 +31,26 @@ if (args.Contains("--invoice-layout"))
 if (args.Contains("--invoice-save") || args.Contains("--invoice-pdf"))
 {
     InvoiceSaveChecks.Run(args.Contains("--invoice-pdf"));
+    return;
+}
+
+if (args.Contains("--holiday-2027"))
+{
+    DateTime[] koreanDays =
+    [
+        new(2027, 2, 6), new(2027, 2, 7), new(2027, 2, 8), new(2027, 2, 9),
+        new(2027, 5, 1), new(2027, 5, 3), new(2027, 5, 13),
+        new(2027, 7, 17), new(2027, 7, 19), new(2027, 8, 16),
+        new(2027, 9, 14), new(2027, 9, 15), new(2027, 9, 16),
+        new(2027, 10, 4), new(2027, 10, 11), new(2027, 12, 27)
+    ];
+    foreach (DateTime day in koreanDays)
+        Require(HolidayProvider.Get(day, day)[day].Name.Length > 0, $"2027 한국 휴일 누락: {day:yyyy-MM-dd}");
+    Require(!HolidayProvider.IsKoreanBusinessDay(new DateTime(2027, 2, 9)), "설날 대체공휴일 영업일 오류");
+    Require(HolidayProvider.IsKoreanBusinessDay(new DateTime(2027, 2, 10)), "설날 이후 영업일 오류");
+    Require(HolidayProvider.Get(new DateTime(2027, 2, 15), new DateTime(2027, 2, 15))
+        [new DateTime(2027, 2, 15)].Name == "Presidents' Day", "미국 2027 Banking 휴일 오류");
+    Console.WriteLine("HARNESS PASS: 2027 한국 휴일 및 미국 Banking 휴일");
     return;
 }
 

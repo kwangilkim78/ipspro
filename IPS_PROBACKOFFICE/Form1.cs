@@ -37,6 +37,14 @@ namespace IPSEBO
         private bool lastKbWasCumulative;
         private readonly BusinessDaySettings businessDaySettings;
         private readonly OperationsScreen currentScreen;
+        private readonly Label bokValidationLabel = new()
+        {
+            AutoSize = true,
+            MaximumSize = new Size(650, 0),
+            Margin = new Padding(12, 8, 3, 3),
+            ForeColor = Color.DimGray,
+            Text = "검증 대기"
+        };
 
         public Form1() : this(string.Empty, new BusinessDaySettings(), OperationsScreen.All)
         {
@@ -89,6 +97,8 @@ namespace IPSEBO
         // 1. BOK report 조회
         private void btnLoad_Click(object sender, EventArgs e)
         {
+            bokValidationLabel.Text = "조회 중…";
+            bokValidationLabel.ForeColor = Color.DimGray;
             DateTime reportDate = dateTimePicker1.Value.Date;
             (DateTime startDateTime, DateTime endDateTime) = businessDaySettings.GetDailyRange(reportDate);
 
@@ -98,25 +108,6 @@ namespace IPSEBO
                 {
                     conn.Open();
                     // PRODUCT 값에 따라 31, 32 치환. Reference No는 뷰의 한국시간 날짜별 BOKId를 사용한다.
-                    // NDF는 매수/매도 측 행의 trade_id가 서로 다를 수 있으므로
-                    // 실제 체결 특성(시각/수량/가격/결제일/테너/레그)으로 한 거래를 식별한다.
-                    string ndfGroupExpression = @"CONCAT_WS('|',
-                        'NDF',
-                        DATE_FORMAT(
-                            DATE_ADD(
-                                GREATEST(
-                                    COALESCE(tr.`Buy.created`, '1970-01-01'),
-                                    COALESCE(tr.`Sell.created`, '1970-01-01')
-                                ), INTERVAL 9 HOUR
-                            ), '%Y%m%d%H%i%s'
-                        ),
-                        CAST(tr.`Filled Quantity` AS CHAR),
-                        CAST(tr.leg_price AS CHAR),
-                        COALESCE(DATE_FORMAT(tr.leg_settle_date, '%Y%m%d'), ''),
-                        COALESCE(TRIM(tr.TYPE), ''),
-                        COALESCE(TRIM(tr.LEG_TYPE), '')
-                    )";
-
                     string query = $@"
         WITH bok_rows AS
         (
@@ -138,42 +129,10 @@ namespace IPSEBO
             WHEN PRODUCT = 'NDF' THEN '32'
             ELSE PRODUCT
           END AS `Product Code`,
-          MIN(BOKId) OVER (
-            PARTITION BY
-              CASE
-                WHEN UPPER(TRIM(tr.PRODUCT)) = 'NDF'
-                  THEN {ndfGroupExpression}
-                ELSE CONCAT('ROW:', CAST(tr.BOKId AS CHAR))
-              END,
-              COALESCE(TRIM(tr.LEG_TYPE), '')
-          ) AS `Reference No`,
-          MAX(NULLIF(TRIM(COALESCE(bi.institution_code, tr.`Buy.Executing_Organisation`)), '')) OVER (
-            PARTITION BY
-              CASE
-                WHEN UPPER(TRIM(tr.PRODUCT)) = 'NDF'
-                  THEN {ndfGroupExpression}
-                ELSE CONCAT('ROW:', CAST(tr.BOKId AS CHAR))
-              END,
-              COALESCE(TRIM(tr.LEG_TYPE), '')
-          ) AS `Buyer Code`,
-          MAX(NULLIF(TRIM(COALESCE(si.institution_code, tr.`Sell.Executing_Organisation`)), '')) OVER (
-            PARTITION BY
-              CASE
-                WHEN UPPER(TRIM(tr.PRODUCT)) = 'NDF'
-                  THEN {ndfGroupExpression}
-                ELSE CONCAT('ROW:', CAST(tr.BOKId AS CHAR))
-              END,
-              COALESCE(TRIM(tr.LEG_TYPE), '')
-          ) AS `Seller Code`,
-          MAX(tr.`Filled Quantity`) OVER (
-            PARTITION BY
-              CASE
-                WHEN UPPER(TRIM(tr.PRODUCT)) = 'NDF'
-                  THEN {ndfGroupExpression}
-                ELSE CONCAT('ROW:', CAST(tr.BOKId AS CHAR))
-              END,
-              COALESCE(TRIM(tr.LEG_TYPE), '')
-          ) AS `Amount`,
+          tr.BOKId AS `Reference No`,
+          NULLIF(TRIM(COALESCE(bi.institution_code, tr.`Buy.Executing_Organisation`)), '') AS `Buyer Code`,
+          NULLIF(TRIM(COALESCE(si.institution_code, tr.`Sell.Executing_Organisation`)), '') AS `Seller Code`,
+          tr.`Filled Quantity` AS `Amount`,
           'USD' AS `Basic Currency`,
           'KRW' AS `Counter Currency`,
           DATE_FORMAT(DATE_ADD(GREATEST(COALESCE(tr.`Buy.created`, '1970-01-01'), COALESCE(tr.`Sell.created`, '1970-01-01')), INTERVAL 9 HOUR), '%H%i%s') AS `Trade Time`,
@@ -202,24 +161,7 @@ namespace IPSEBO
           '' AS `Near Leg Rate`,
           '' AS `Far Leg Rate`,
           tr.trade_id AS `__trade_id`,
-          COALESCE(TRIM(tr.LEG_TYPE), '') AS `__leg_type`,
-          ROW_NUMBER() OVER (
-            PARTITION BY
-              CASE
-                WHEN UPPER(TRIM(tr.PRODUCT)) = 'NDF'
-                  THEN {ndfGroupExpression}
-                ELSE CONCAT('ROW:', CAST(tr.BOKId AS CHAR))
-              END,
-              COALESCE(TRIM(tr.LEG_TYPE), '')
-            ORDER BY
-              CASE
-                WHEN NULLIF(TRIM(COALESCE(bi.institution_code, tr.`Buy.Executing_Organisation`)), '') IS NOT NULL
-                 AND NULLIF(TRIM(COALESCE(si.institution_code, tr.`Sell.Executing_Organisation`)), '') IS NOT NULL
-                  THEN 0
-                ELSE 1
-              END,
-              tr.BOKId ASC
-          ) AS `__row_no`
+          COALESCE(TRIM(tr.LEG_TYPE), '') AS `__leg_type`
         FROM ips_ew.v_trading_report tr
         LEFT JOIN mex_prod.orders buy_order
           ON buy_order.client_order_id = tr.`Buy.client_order_id`
@@ -269,7 +211,6 @@ namespace IPSEBO
           `Near Leg Rate`,
           `Far Leg Rate`
         FROM bok_rows
-        WHERE `__row_no` = 1
         ORDER BY `Reference No` ASC, `__trade_id` ASC, FIELD(`__leg_type`, 'NEAR', 'FAR');";
 
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
@@ -286,10 +227,16 @@ namespace IPSEBO
 
                         dataGridView1.DataSource = dt;
                         dataGridView1.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+                        var validation = IPS_PROBACKOFFICE.Helpers.BokSequenceValidation.Check(
+                            dt.Rows.Cast<DataRow>().Select(row => Convert.ToString(row["Reference No"])));
+                        bokValidationLabel.Text = validation.Message.Replace("\n", "  ·  ");
+                        bokValidationLabel.ForeColor = validation.Success ? Color.DarkGreen : Color.Firebrick;
                     }
                 }
                 catch (Exception ex)
                 {
+                    bokValidationLabel.Text = "조회 실패 · 검증하지 못했습니다.";
+                    bokValidationLabel.ForeColor = Color.Firebrick;
                     MessageBox.Show("BOK 조회 중 오류: " + ex.Message);
                 }
             }
@@ -312,6 +259,7 @@ namespace IPSEBO
                     DataTable kbDt = new DataTable();
 
                     // mextrader_admin_prod.users의 full_name을 영문 딜러명으로 사용
+                    // 정정으로 보고일/회차가 이동하지 않도록 최초 생성시각만 사용한다.
                     string kbQuery = @"
         SELECT 
             tr.PRODUCT AS `Product`, 
@@ -325,9 +273,7 @@ namespace IPSEBO
                         ORDER BY
                             GREATEST(
                                 COALESCE(tr.`Buy.created`, '1970-01-01'),
-                                COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                                COALESCE(tr.`Sell.created`, '1970-01-01'),
-                                COALESCE(tr.`Sell.modified`, '1970-01-01')
+                                COALESCE(tr.`Sell.created`, '1970-01-01')
                             ) ASC,
                             tr.BOKId ASC
                     ),
@@ -394,17 +340,13 @@ namespace IPSEBO
                       AND DATE_ADD(
                         GREATEST(
                             COALESCE(tr.`Buy.created`, '1970-01-01'),
-                            COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                            COALESCE(tr.`Sell.created`, '1970-01-01'),
-                            COALESCE(tr.`Sell.modified`, '1970-01-01')
+                            COALESCE(tr.`Sell.created`, '1970-01-01')
                         ), INTERVAL 9 HOUR
                       ) >= afe.start_datetime
                       AND DATE_ADD(
                         GREATEST(
                             COALESCE(tr.`Buy.created`, '1970-01-01'),
-                            COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                            COALESCE(tr.`Sell.created`, '1970-01-01'),
-                            COALESCE(tr.`Sell.modified`, '1970-01-01')
+                            COALESCE(tr.`Sell.created`, '1970-01-01')
                         ), INTERVAL 9 HOUR
                       ) < afe.end_datetime
                 )
@@ -437,26 +379,20 @@ namespace IPSEBO
             AND DATE_ADD(
                 GREATEST(
                     COALESCE(tr.`Buy.created`, '1970-01-01'),
-                    COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                    COALESCE(tr.`Sell.created`, '1970-01-01'),
-                    COALESCE(tr.`Sell.modified`, '1970-01-01')
+                    COALESCE(tr.`Sell.created`, '1970-01-01')
                 ), INTERVAL 9 HOUR
             ) >= @startDateTime
             AND DATE_ADD(
                 GREATEST(
                     COALESCE(tr.`Buy.created`, '1970-01-01'),
-                    COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                    COALESCE(tr.`Sell.created`, '1970-01-01'),
-                    COALESCE(tr.`Sell.modified`, '1970-01-01')
+                    COALESCE(tr.`Sell.created`, '1970-01-01')
                 ), INTERVAL 9 HOUR
             ) < @endDateTime
         ORDER BY 
             tr.PRODUCT ASC,
             GREATEST(
                 COALESCE(tr.`Buy.created`, '1970-01-01'),
-                COALESCE(tr.`Buy.modified`, '1970-01-01'),
-                COALESCE(tr.`Sell.created`, '1970-01-01'),
-                COALESCE(tr.`Sell.modified`, '1970-01-01')
+                COALESCE(tr.`Sell.created`, '1970-01-01')
             ) ASC,
             tr.BOKId ASC;";
 
@@ -770,10 +706,34 @@ namespace IPSEBO
             }
         }
 
+        private void AllRatesCheckBox_CheckedChanged(object? sender, EventArgs e)
+        {
+            commonRateTextBox.Enabled = allRatesCheckBox.Checked;
+            commonPointsTextBox.Enabled = allRatesCheckBox.Checked;
+            foreach (var box in new[] { textBox1, textBox2, textBox3, textBox4, textBox5, textBox6 })
+                box.ReadOnly = allRatesCheckBox.Checked;
+            ApplyCommonRates();
+        }
+
+        private void CommonRates_TextChanged(object? sender, EventArgs e)
+        {
+            ApplyCommonRates();
+        }
+
+        private void ApplyCommonRates()
+        {
+            if (!allRatesCheckBox.Checked)
+                return;
+
+            textBox1.Text = textBox2.Text = textBox4.Text = textBox5.Text = commonRateTextBox.Text;
+            textBox3.Text = textBox6.Text = commonPointsTextBox.Text;
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
             try
             {
+                ApplyCommonRates();
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($"\"USD/KRW,DF 1M,{textBox1.Text.Trim()},{textBox2.Text.Trim()},{textBox3.Text.Trim()},7899\"");
                 sb.AppendLine($"\"USD/KRW,NDF 1M,{textBox4.Text.Trim()},{textBox5.Text.Trim()},{textBox6.Text.Trim()},7801\"");
@@ -812,6 +772,14 @@ namespace IPSEBO
             textBox4.Text = Properties.Settings.Default.LastValue4;
             textBox5.Text = Properties.Settings.Default.LastValue5;
             textBox6.Text = Properties.Settings.Default.LastValue6;
+            // Seed both common inputs before enabling their live synchronization.
+            commonRateTextBox.TextChanged -= CommonRates_TextChanged;
+            commonPointsTextBox.TextChanged -= CommonRates_TextChanged;
+            commonRateTextBox.Text = textBox1.Text;
+            commonPointsTextBox.Text = textBox3.Text;
+            commonRateTextBox.TextChanged += CommonRates_TextChanged;
+            commonPointsTextBox.TextChanged += CommonRates_TextChanged;
+            AllRatesCheckBox_CheckedChanged(this, EventArgs.Empty);
             if (currentScreen is OperationsScreen.All or OperationsScreen.NewYorkClose)
             {
                 nyCloseHistoryDate.Value = DateTime.Today;
