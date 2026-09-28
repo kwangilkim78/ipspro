@@ -772,6 +772,8 @@ namespace IPSEBO
             textBox4.Text = Properties.Settings.Default.LastValue4;
             textBox5.Text = Properties.Settings.Default.LastValue5;
             textBox6.Text = Properties.Settings.Default.LastValue6;
+            if (currentScreen is OperationsScreen.All or OperationsScreen.NewYorkClose)
+                LoadPreviousNyCloseDefaults();
             // Seed both common inputs before enabling their live synchronization.
             commonRateTextBox.TextChanged -= CommonRates_TextChanged;
             commonPointsTextBox.TextChanged -= CommonRates_TextChanged;
@@ -790,6 +792,43 @@ namespace IPSEBO
         private void btnNyCloseHistory_Click(object sender, EventArgs e)
         {
             LoadNyCloseHistory();
+        }
+
+        private void LoadPreviousNyCloseDefaults()
+        {
+            // 주말·휴일에도 마지막 가격을 찾도록 한국시간 오늘 이전의 최신 기록을 조회한다.
+            // 개발 실행/ClickOnce 설치별 로컬 저장값에 의존하지 않는다.
+            DateTime todayKst = DateTime.UtcNow.AddHours(9).Date;
+            DateTime toUtc = DateTime.SpecifyKind(todayKst.AddHours(-9), DateTimeKind.Unspecified);
+            const string sql = @"
+                SELECT price, swap_points
+                FROM mex_prod.matcher_active_quotes
+                WHERE modified < @to
+                  AND price IS NOT NULL
+                ORDER BY modified DESC, instrument_id, side
+                LIMIT 1;";
+
+            try
+            {
+                using var connection = new MySqlConnection(connectionString);
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@to", toUtc);
+                connection.Open();
+                using var reader = command.ExecuteReader();
+                if (!reader.Read())
+                    return;
+
+                string rate = Convert.ToDecimal(reader["price"]).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                string points = reader.IsDBNull(reader.GetOrdinal("swap_points"))
+                    ? string.Empty
+                    : Convert.ToDecimal(reader["swap_points"]).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                textBox1.Text = textBox2.Text = textBox4.Text = textBox5.Text = rate;
+                textBox3.Text = textBox6.Text = points;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("전날 뉴욕종가 기본값을 불러오지 못해 기존 저장값을 사용합니다: " + ex.Message);
+            }
         }
 
         private void LoadNyCloseHistory()
@@ -832,7 +871,7 @@ namespace IPSEBO
                     if (nyCloseHistoryGrid.Columns[columnName] is DataGridViewColumn column)
                     {
                         column.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-                        column.DefaultCellStyle.Format = "N3";
+                        column.DefaultCellStyle.Format = "N2";
                         column.FillWeight = 25;
                     }
             }
