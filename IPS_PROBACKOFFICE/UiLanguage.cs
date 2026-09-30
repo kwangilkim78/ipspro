@@ -161,6 +161,7 @@ internal static class UiLanguage
         ["뉴욕종가"] = "New York Close",
         ["BOK 기준일"] = "BOK Report Date",
         ["BOK 조회"] = "Search BOK",
+        ["BOK 기간 조회"] = "Search BOK Date Range",
         ["KB EOD 기준일"] = "KB EOD Report Date",
         ["전송 회차"] = "Reporting Session",
         ["KB EOD 조회"] = "Search KB EOD",

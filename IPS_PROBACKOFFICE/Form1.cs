@@ -32,6 +32,9 @@ namespace IPSEBO
         private const string FileTransferPassword = "Wjswkrjfo12#";
         string localDirectory = @"Y:\전자거래사업본부\뉴욕종가";
         private bool changingKbMode;
+        private DateTime? lastBokStartDate;
+        private DateTime? lastBokEndDate;
+        private bool lastBokWasRange;
         private DateTime? lastKbReportDate;
         private string? lastKbRound;
         private bool lastKbWasCumulative;
@@ -97,10 +100,25 @@ namespace IPSEBO
         // 1. BOK report 조회
         private void btnLoad_Click(object sender, EventArgs e)
         {
+            LoadBokReport(dateTimePicker1.Value.Date, dateTimePicker1.Value.Date);
+        }
+
+        private void btnBokRange_Click(object sender, EventArgs e)
+        {
+            if (bokStartDate.Value.Date > bokEndDate.Value.Date)
+            {
+                MessageBox.Show("시작일은 종료일보다 늦을 수 없습니다.");
+                return;
+            }
+            LoadBokReport(bokStartDate.Value.Date, bokEndDate.Value.Date, includeFees: true);
+        }
+
+        private void LoadBokReport(DateTime reportDate, DateTime endReportDate, bool includeFees = false)
+        {
             bokValidationLabel.Text = "조회 중…";
             bokValidationLabel.ForeColor = Color.DimGray;
-            DateTime reportDate = dateTimePicker1.Value.Date;
-            (DateTime startDateTime, DateTime endDateTime) = businessDaySettings.GetDailyRange(reportDate);
+            DateTime startDateTime = businessDaySettings.GetDailyRange(reportDate).Start;
+            DateTime endDateTime = businessDaySettings.GetDailyRange(endReportDate).End;
 
             using (MySqlConnection conn = new MySqlConnection(connectionString))
             {
@@ -108,6 +126,8 @@ namespace IPSEBO
                 {
                     conn.Open();
                     // PRODUCT 값에 따라 31, 32 치환. Reference No는 뷰의 한국시간 날짜별 BOKId를 사용한다.
+                    // 한쪽 실행기관이 누락된 거래는 반대쪽의 명시된 상대기관으로 코드를 조회한다.
+                    // 기간 조회 수수료는 보고서 원본 값을 표시하며, 미등록 값은 0으로 바꾸지 않는다.
                     string query = $@"
         WITH bok_rows AS
         (
@@ -120,7 +140,10 @@ namespace IPSEBO
               ), INTERVAL 9 HOUR
             ), '%Y-%m-%d'
           ) AS `ACTUAL TRADING DATE`,
-          DATE_FORMAT(@reportDate, '%Y-%m-%d') AS `TRADING DATE`,
+          DATE_FORMAT(CASE WHEN @isDaily THEN @reportDate ELSE
+            DATE_SUB(DATE_ADD(GREATEST(COALESCE(tr.`Buy.created`, '1970-01-01'),
+              COALESCE(tr.`Sell.created`, '1970-01-01')), INTERVAL 9 HOUR), INTERVAL 8 HOUR)
+          END, '%Y-%m-%d') AS `TRADING DATE`,
           '1' AS `Branch Code`,
           CAST(CONCAT(CHAR(96), '04542') AS CHAR) AS `Branch Adress`,
           '1' AS `New/Delete/Update`,
@@ -130,8 +153,22 @@ namespace IPSEBO
             ELSE PRODUCT
           END AS `Product Code`,
           tr.BOKId AS `Reference No`,
-          NULLIF(TRIM(COALESCE(bi.institution_code, tr.`Buy.Executing_Organisation`)), '') AS `Buyer Code`,
-          NULLIF(TRIM(COALESCE(si.institution_code, tr.`Sell.Executing_Organisation`)), '') AS `Seller Code`,
+          COALESCE(NULLIF(TRIM(bo.name), ''),
+            NULLIF(TRIM(tr.`Buy.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Sell.Counterparty_Organisation`), '')) AS `Buyer Bank`,
+          COALESCE(NULLIF(TRIM(so.name), ''),
+            NULLIF(TRIM(tr.`Sell.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Buy.Counterparty_Organisation`), '')) AS `Seller Bank`,
+          COALESCE(NULLIF(TRIM(bi.institution_code), ''),
+            NULLIF(TRIM(tr.`Buy.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Sell.Counterparty_Organisation`), '')) AS `Buyer Code`,
+          COALESCE(NULLIF(TRIM(si.institution_code), ''),
+            NULLIF(TRIM(tr.`Sell.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Buy.Counterparty_Organisation`), '')) AS `Seller Code`,
+          tr.`Buy.brokerage_commission` AS `Buyer Brokerage`,
+          tr.`Buy.brokerage_currency` AS `Buyer Brokerage Currency`,
+          tr.`Sell.brokerage_commission` AS `Seller Brokerage`,
+          tr.`Sell.brokerage_currency` AS `Seller Brokerage Currency`,
           tr.`Filled Quantity` AS `Amount`,
           'USD' AS `Basic Currency`,
           'KRW' AS `Counter Currency`,
@@ -167,9 +204,13 @@ namespace IPSEBO
           ON buy_order.client_order_id = tr.`Buy.client_order_id`
         LEFT JOIN mex_prod.orders sell_order
           ON sell_order.client_order_id = tr.`Sell.client_order_id`
-        LEFT JOIN mextrader_admin_prod.organizations bo ON tr.`Buy.Executing_Organisation` = bo.name
+        LEFT JOIN mextrader_admin_prod.organizations bo
+          ON LOWER(COALESCE(NULLIF(TRIM(tr.`Buy.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Sell.Counterparty_Organisation`), ''))) = LOWER(TRIM(bo.name))
         LEFT JOIN ips_ew.institution_local_info bi ON bi.external_institution_id = bo.id
-        LEFT JOIN mextrader_admin_prod.organizations so ON tr.`Sell.Executing_Organisation` = so.name
+        LEFT JOIN mextrader_admin_prod.organizations so
+          ON LOWER(COALESCE(NULLIF(TRIM(tr.`Sell.Executing_Organisation`), ''),
+            NULLIF(TRIM(tr.`Buy.Counterparty_Organisation`), ''))) = LOWER(TRIM(so.name))
         LEFT JOIN ips_ew.institution_local_info si ON si.external_institution_id = so.id
         WHERE leg_price IS NOT NULL
           AND DATE_ADD(
@@ -193,10 +234,12 @@ namespace IPSEBO
           `New/Delete/Update`,
           `Product Code`,
           `Reference No`,
-          CASE WHEN `Buyer Code` IN ('1123-1', '1123-2')
-            THEN '1123' ELSE `Buyer Code` END AS `Buyer Code`,
-          CASE WHEN `Seller Code` IN ('1123-1', '1123-2')
-            THEN '1123' ELSE `Seller Code` END AS `Seller Code`,
+          CASE WHEN @isRange THEN `Buyer Bank`
+            WHEN `Buyer Code` IN ('1123-1', '1123-2')
+            THEN '1123' ELSE `Buyer Code` END AS `{(includeFees ? "Buyer Bank" : "Buyer Code")}`,
+          CASE WHEN @isRange THEN `Seller Bank`
+            WHEN `Seller Code` IN ('1123-1', '1123-2')
+            THEN '1123' ELSE `Seller Code` END AS `{(includeFees ? "Seller Bank" : "Seller Code")}`,
           `Amount`,
           `Basic Currency`,
           `Counter Currency`,
@@ -210,12 +253,15 @@ namespace IPSEBO
           `Exchange Rate`,
           `Near Leg Rate`,
           `Far Leg Rate`
+          {(includeFees ? ", `Buyer Brokerage`, `Buyer Brokerage Currency`, `Seller Brokerage`, `Seller Brokerage Currency`" : string.Empty)}
         FROM bok_rows
-        ORDER BY `Reference No` ASC, `__trade_id` ASC, FIELD(`__leg_type`, 'NEAR', 'FAR');";
+        ORDER BY `TRADING DATE` ASC, `Reference No` ASC, `__trade_id` ASC, FIELD(`__leg_type`, 'NEAR', 'FAR');";
 
                     using (MySqlCommand cmd = new MySqlCommand(query, conn))
                     {
                         cmd.Parameters.AddWithValue("@reportDate", reportDate);
+                        cmd.Parameters.AddWithValue("@isDaily", reportDate == endReportDate);
+                        cmd.Parameters.AddWithValue("@isRange", includeFees);
                         cmd.Parameters.AddWithValue("@startDateTime", startDateTime);
                         cmd.Parameters.AddWithValue("@endDateTime", endDateTime);
 
@@ -226,9 +272,24 @@ namespace IPSEBO
                         }
 
                         dataGridView1.DataSource = dt;
+                        lastBokStartDate = reportDate;
+                        lastBokEndDate = endReportDate;
+                        lastBokWasRange = includeFees;
                         dataGridView1.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
                         var validation = IPS_PROBACKOFFICE.Helpers.BokSequenceValidation.Check(
                             dt.Rows.Cast<DataRow>().Select(row => Convert.ToString(row["Reference No"])));
+                        if (reportDate != endReportDate && dt.Rows.Count > 0)
+                        {
+                            var dailyChecks = dt.Rows.Cast<DataRow>()
+                                .GroupBy(row => Convert.ToString(row["ACTUAL TRADING DATE"]))
+                                .Select(group => (Date: group.Key, Result: IPS_PROBACKOFFICE.Helpers.BokSequenceValidation.Check(
+                                    group.Select(row => Convert.ToString(row["Reference No"])))))
+                                .ToList();
+                            bool success = dailyChecks.All(check => check.Result.Success);
+                            validation = (success, $"{reportDate:yyyy-MM-dd} ~ {endReportDate:yyyy-MM-dd} · {dt.Rows.Count:N0}건 · " +
+                                (success ? $"{dailyChecks.Count}개 날짜 검증완료" : string.Join("  ·  ", dailyChecks.Where(check => !check.Result.Success)
+                                    .Select(check => $"{check.Date}: {check.Result.Message}"))));
+                        }
                         bokValidationLabel.Text = validation.Message.Replace("\n", "  ·  ");
                         bokValidationLabel.ForeColor = validation.Success ? Color.DarkGreen : Color.Firebrick;
                     }
@@ -591,9 +652,11 @@ namespace IPSEBO
         {
             ExportGridToExcel(
                 dataGridView1,
-                dateTimePicker1.Value,
-                "BOK_Report",
-                removeTradingDate: true);
+                lastBokStartDate ?? dateTimePicker1.Value,
+                lastBokWasRange
+                    ? $"BOK_Report_to_{lastBokEndDate:yyyyMMdd}" : "BOK_Report",
+                removeTradingDate: true,
+                includeActualTradingDate: lastBokWasRange);
         }
 
         private static string CombineRemotePath(string directory, string fileName)
@@ -667,7 +730,8 @@ namespace IPSEBO
             DataGridView grid,
             DateTime reportDate,
             string prefix,
-            bool removeTradingDate)
+            bool removeTradingDate,
+            bool includeActualTradingDate = false)
         {
             if (grid.DataSource is not DataTable original)
             {
@@ -679,12 +743,19 @@ namespace IPSEBO
             {
                 DataTable exportData = original.Copy();
                 if (removeTradingDate
+                    && !includeActualTradingDate
                     && exportData.Columns.Contains("ACTUAL TRADING DATE"))
                     exportData.Columns.Remove("ACTUAL TRADING DATE");
 
                 if (removeTradingDate
                     && exportData.Columns.Contains("TRADING DATE"))
                     exportData.Columns.Remove("TRADING DATE");
+
+                if (includeActualTradingDate && exportData.Columns.Contains("ACTUAL TRADING DATE"))
+                {
+                    exportData.Columns["ACTUAL TRADING DATE"]!.ColumnName = "거래일";
+                    exportData.Columns["거래일"]!.SetOrdinal(0);
+                }
 
                 using var workbook = new XLWorkbook();
                 workbook.Worksheets.Add(exportData, "Sheet1");

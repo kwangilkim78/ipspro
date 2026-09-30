@@ -8,6 +8,8 @@
         private TabPage kbTab = null!;
         private TabPage rateTab = null!;
         private DateTimePicker dateTimePicker1 = null!;
+        private DateTimePicker bokStartDate = null!;
+        private DateTimePicker bokEndDate = null!;
         private DateTimePicker dateTimePicker2 = null!;
         private ComboBox kbRoundComboBox = null!;
         private CheckBox kbIntervalCheckBox = null!;
@@ -113,6 +115,16 @@
             btnLoad.AutoSize = true;
             btnLoad.Click += btnLoad_Click;
             bokToolbar.Controls.Add(btnLoad);
+            bokToolbar.SetFlowBreak(btnLoad, true);
+            bokToolbar.Controls.Add(new Label { Text = "시작일", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
+            bokStartDate = new DateTimePicker { Format = DateTimePickerFormat.Short };
+            bokToolbar.Controls.Add(bokStartDate);
+            bokToolbar.Controls.Add(new Label { Text = "종료일", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
+            bokEndDate = new DateTimePicker { Format = DateTimePickerFormat.Short };
+            bokToolbar.Controls.Add(bokEndDate);
+            var btnBokRange = new Button { Text = "BOK 기간 조회", AutoSize = true };
+            btnBokRange.Click += btnBokRange_Click;
+            bokToolbar.Controls.Add(btnBokRange);
             btnBokExcel.Text = "엑셀 저장";
             btnBokExcel.AutoSize = true;
             btnBokExcel.Click += btnBokExcel_Click;
