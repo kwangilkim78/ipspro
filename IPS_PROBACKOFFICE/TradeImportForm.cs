@@ -104,7 +104,10 @@ public sealed class TradeImportForm : Form
             string[] fields = parser.ReadFields() ?? [];
             if (fields.Length != headers.Length) throw new InvalidOperationException($"CSV {parser.LineNumber}행의 컬럼 수가 다릅니다. (기대 {headers.Length}, 실제 {fields.Length})");
             object[] values = new object[headers.Length + 1];
-            for (int i = 0; i < fields.Length; i++) values[i] = fields[i].Trim();
+            for (int i = 0; i < fields.Length; i++)
+                values[i] = table.Columns[i].ColumnName.Equals("Base Amount", StringComparison.OrdinalIgnoreCase)
+                    ? TradeImportRepository.NormalizeBaseAmount(fields[i])
+                    : fields[i].Trim();
             values[^1] = "입력 대기";
             table.Rows.Add(values);
         }

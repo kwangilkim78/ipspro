@@ -162,6 +162,8 @@ internal static class UiLanguage
         ["BOK 기준일"] = "BOK Report Date",
         ["BOK 조회"] = "Search BOK",
         ["BOK 기간 조회"] = "Search BOK Date Range",
+        ["기준일 조회"] = "Single Date",
+        ["기간 조회"] = "Date Range",
         ["KB EOD 기준일"] = "KB EOD Report Date",
         ["전송 회차"] = "Reporting Session",
         ["KB EOD 조회"] = "Search KB EOD",

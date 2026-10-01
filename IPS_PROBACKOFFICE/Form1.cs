@@ -98,13 +98,20 @@ namespace IPSEBO
         }
 
         // 1. BOK report 조회
-        private void btnLoad_Click(object sender, EventArgs e)
+        private void BokMode_Changed(object? sender, EventArgs e)
         {
-            LoadBokReport(dateTimePicker1.Value.Date, dateTimePicker1.Value.Date);
+            bokDailyDates.Visible = !bokRangeMode.Checked;
+            bokRangeDates.Visible = bokRangeMode.Checked;
         }
 
-        private void btnBokRange_Click(object sender, EventArgs e)
+        private void btnLoad_Click(object sender, EventArgs e)
         {
+            if (!bokRangeMode.Checked)
+            {
+                LoadBokReport(dateTimePicker1.Value.Date, dateTimePicker1.Value.Date);
+                return;
+            }
+
             if (bokStartDate.Value.Date > bokEndDate.Value.Date)
             {
                 MessageBox.Show("시작일은 종료일보다 늦을 수 없습니다.");
@@ -213,6 +220,7 @@ namespace IPSEBO
             NULLIF(TRIM(tr.`Buy.Counterparty_Organisation`), ''))) = LOWER(TRIM(so.name))
         LEFT JOIN ips_ew.institution_local_info si ON si.external_institution_id = so.id
         WHERE leg_price IS NOT NULL
+          AND NULLIF(TRIM(tr.`Buy.client_order_id`), '') IS NOT NULL
           AND DATE_ADD(
                 GREATEST(
                     COALESCE(tr.`Buy.created`, '1970-01-01'),
@@ -272,6 +280,8 @@ namespace IPSEBO
                         }
 
                         dataGridView1.DataSource = dt;
+                        if (dataGridView1.Columns["ACTUAL TRADING DATE"] is DataGridViewColumn actualTradingDateColumn)
+                            actualTradingDateColumn.Visible = false;
                         lastBokStartDate = reportDate;
                         lastBokEndDate = endReportDate;
                         lastBokWasRange = includeFees;

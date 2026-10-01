@@ -10,6 +10,9 @@
         private DateTimePicker dateTimePicker1 = null!;
         private DateTimePicker bokStartDate = null!;
         private DateTimePicker bokEndDate = null!;
+        private RadioButton bokRangeMode = null!;
+        private FlowLayoutPanel bokDailyDates = null!;
+        private FlowLayoutPanel bokRangeDates = null!;
         private DateTimePicker dateTimePicker2 = null!;
         private ComboBox kbRoundComboBox = null!;
         private CheckBox kbIntervalCheckBox = null!;
@@ -94,7 +97,8 @@
             bokLayout.ColumnCount = 1;
             bokLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             bokLayout.Dock = DockStyle.Fill;
-            bokLayout.RowCount = 2;
+            bokLayout.RowCount = 3;
+            bokLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             bokLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             bokLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
@@ -108,28 +112,33 @@
             bokToolbar.AutoSize = true;
             bokToolbar.Dock = DockStyle.Fill;
             bokToolbar.Padding = new Padding(6);
-            bokToolbar.Controls.Add(new Label { Text = "BOK 기준일", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
+            var bokDailyMode = new RadioButton { Text = "기준일 조회", AutoSize = true, Checked = true, Margin = new Padding(3, 7, 8, 3) };
+            bokRangeMode = new RadioButton { Text = "기간 조회", AutoSize = true, Margin = new Padding(3, 7, 12, 3) };
+            bokToolbar.Controls.Add(bokDailyMode);
+            bokToolbar.Controls.Add(bokRangeMode);
+            bokDailyDates = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = Padding.Empty };
+            bokRangeDates = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = Padding.Empty, Visible = false };
             dateTimePicker1.Format = DateTimePickerFormat.Short;
-            bokToolbar.Controls.Add(dateTimePicker1);
-            btnLoad.Text = "BOK 조회";
+            dateTimePicker1.Width = 140;
+            bokDailyDates.Controls.Add(dateTimePicker1);
+            bokToolbar.Controls.Add(bokDailyDates);
+            bokRangeDates.Controls.Add(new Label { Text = "시작일", AutoSize = true, Margin = new Padding(3, 7, 3, 0) });
+            bokStartDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 140 };
+            bokRangeDates.Controls.Add(bokStartDate);
+            bokRangeDates.Controls.Add(new Label { Text = "종료일", AutoSize = true, Margin = new Padding(6, 7, 3, 0) });
+            bokEndDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 140 };
+            bokRangeDates.Controls.Add(bokEndDate);
+            bokToolbar.Controls.Add(bokRangeDates);
+            bokRangeMode.CheckedChanged += BokMode_Changed;
+            btnLoad.Text = "조회";
             btnLoad.AutoSize = true;
             btnLoad.Click += btnLoad_Click;
             bokToolbar.Controls.Add(btnLoad);
-            bokToolbar.SetFlowBreak(btnLoad, true);
-            bokToolbar.Controls.Add(new Label { Text = "시작일", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
-            bokStartDate = new DateTimePicker { Format = DateTimePickerFormat.Short };
-            bokToolbar.Controls.Add(bokStartDate);
-            bokToolbar.Controls.Add(new Label { Text = "종료일", AutoSize = true, Margin = new Padding(3, 8, 3, 0) });
-            bokEndDate = new DateTimePicker { Format = DateTimePickerFormat.Short };
-            bokToolbar.Controls.Add(bokEndDate);
-            var btnBokRange = new Button { Text = "BOK 기간 조회", AutoSize = true };
-            btnBokRange.Click += btnBokRange_Click;
-            bokToolbar.Controls.Add(btnBokRange);
             btnBokExcel.Text = "엑셀 저장";
             btnBokExcel.AutoSize = true;
             btnBokExcel.Click += btnBokExcel_Click;
             bokToolbar.Controls.Add(btnBokExcel);
-            bokToolbar.Controls.Add(bokValidationLabel);
+            bokValidationLabel.Margin = new Padding(9, 0, 9, 6);
 
             dataGridView1.Name = "dataGridView1";
             dataGridView1.Dock = DockStyle.Fill;
@@ -278,7 +287,8 @@
             rateLayout.Controls.Add(nyCloseHistoryGrid, 0, 2);
 
             bokLayout.Controls.Add(bokToolbar, 0, 0);
-            bokLayout.Controls.Add(dataGridView1, 0, 1);
+            bokLayout.Controls.Add(bokValidationLabel, 0, 1);
+            bokLayout.Controls.Add(dataGridView1, 0, 2);
             kbLayout.Controls.Add(kbToolbar, 0, 0);
             kbLayout.Controls.Add(dataGridView2, 0, 1);
             bokTab.Controls.Add(bokLayout);

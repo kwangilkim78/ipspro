@@ -45,7 +45,17 @@ public sealed class TradeImportRepository
                 for (int i = 0; i < insertColumns.Count; i++)
                 {
                     string column = insertColumns[i];
-                    command.Parameters.AddWithValue($"@p{i}", ConvertValue(row[column]?.ToString(), schema[column]));
+                    string? raw = row[column]?.ToString();
+                    if (column.Equals("Base Amount", StringComparison.OrdinalIgnoreCase))
+                        raw = NormalizeBaseAmount(raw);
+                    try
+                    {
+                        command.Parameters.AddWithValue($"@p{i}", ConvertValue(raw, schema[column]));
+                    }
+                    catch (FormatException ex)
+                    {
+                        throw new FormatException($"{column}: {ex.Message}", ex);
+                    }
                 }
                 await command.ExecuteNonQueryAsync(cancellationToken);
                 row["처리결과"] = "입력 완료";
@@ -92,6 +102,26 @@ public sealed class TradeImportRepository
     private static string MakeKey(DataRow row) => string.Join("\u001f", Clean(row["ID"]), Clean(row["Organization"]), Clean(row["B/S"]), Clean(row["Tenor"]));
     private static string Clean(object? value) => value?.ToString()?.Trim() ?? string.Empty;
 
+    public static string NormalizeBaseAmount(string? raw)
+    {
+        string value = raw?.Trim() ?? string.Empty;
+        if (value.Length == 0 || value == "-") return value;
+        string normalized = NormalizeNumericText(value);
+        if (decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal number))
+            return Math.Abs(number).ToString(CultureInfo.InvariantCulture);
+        // Preserve malformed input so normal validation reports it instead of changing its meaning.
+        return value;
+    }
+
+    private static string NormalizeNumericText(string value)
+    {
+        // Display-formatted exports append a three-letter currency code to amounts.
+        string normalized = System.Text.RegularExpressions.Regex.Replace(value, @"\s+[A-Za-z]{3}$", "")
+            .Replace('\u2212', '-').Replace('\uFF0D', '-');
+        if (normalized.StartsWith('-')) normalized = "-" + normalized[1..].TrimStart();
+        return normalized;
+    }
+
     private static object ConvertValue(string? raw, string dataType)
     {
         string value = raw?.Trim() ?? string.Empty;
@@ -110,12 +140,12 @@ public sealed class TradeImportRepository
         }
         if (type is "decimal" or "numeric" or "double" or "float" or "real")
         {
-            if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal number)) return number;
+            if (decimal.TryParse(NormalizeNumericText(value), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal number)) return number;
             throw new FormatException($"숫자 형식이 올바르지 않습니다: {value}");
         }
         if (type.Contains("int"))
         {
-            if (long.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out long number)) return number;
+            if (long.TryParse(NormalizeNumericText(value), NumberStyles.Any, CultureInfo.InvariantCulture, out long number)) return number;
             throw new FormatException($"정수 형식이 올바르지 않습니다: {value}");
         }
         return value;

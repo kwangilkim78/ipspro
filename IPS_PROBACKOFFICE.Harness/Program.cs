@@ -3,6 +3,41 @@ using IPS_PROBACKOFFICE;
 using IPS_PROBACKOFFICE.Services;
 using System.Data;
 
+if (args.Contains("--base-amount"))
+{
+    foreach (var (input, expected) in new (string?, string)[]
+    {
+        ("-1,000,000", "1000000"), ("− 250.50", "250.50"), ("－300", "300"),
+        ("-1,000,000 USD", "1000000"), ("1,000,000 USD", "1000000"),
+        ("100", "100"), ("0", "0"), ("-", "-"), (null, ""), ("12-34", "12-34")
+    })
+    {
+        string actual = IPS_PROBACKOFFICE.Data.TradeImportRepository.NormalizeBaseAmount(input);
+        if (actual != expected) throw new Exception($"Base Amount: {input} => {actual}, expected {expected}");
+    }
+    var convert = typeof(IPS_PROBACKOFFICE.Data.TradeImportRepository).GetMethod("ConvertValue",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    if (!Equals(convert.Invoke(null, new object[] { "-1500", "decimal" }), -1500m))
+        throw new Exception("Other numeric columns must retain their sign");
+    foreach (var (input, expected) in new[] { ("1,000,000 USD", 1000000m),
+        ("1,357,250,000 KRW", 1357250000m), ("-1,357,250,000 KRW", -1357250000m) })
+        if (!Equals(convert.Invoke(null, new object[] { input, "decimal" }), expected))
+            throw new Exception("Currency suffix conversion failed: " + input);
+    if (!Equals(convert.Invoke(null, new object[] { "1,000 USD", "bigint" }), 1000L))
+        throw new Exception("Integer amount conversion failed");
+    if (!Equals(convert.Invoke(null, new object[] { "KB USD", "varchar" }), "KB USD"))
+        throw new Exception("Text columns must not be normalized");
+    foreach (string invalid in new[] { "12-34 USD", "USD", "100 USD extra" })
+    {
+        bool rejected = false;
+        try { convert.Invoke(null, new object[] { invalid, "decimal" }); }
+        catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is FormatException) { rejected = true; }
+        if (!rejected) throw new Exception("Malformed input accepted: " + invalid);
+    }
+    Console.WriteLine("HARNESS PASS: Base Amount signs, separators, empty, malformed values; other amounts unchanged");
+    return;
+}
+
 if (args.Contains("--contact-email-connection"))
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
